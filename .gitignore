@@ -39,3 +39,8 @@ next-env.d.ts
 # partykit state
 .partykit/
 
+
+.env.production
+.env
+.env*.local
+
