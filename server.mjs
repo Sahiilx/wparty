@@ -99,11 +99,13 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", (req, socket, head) => {
   const url = req.url || "";
+  console.log(`[PartyHub Server] Incoming WebSocket upgrade: ${url}`);
   // Match PartySocket URLs like /parties/main/ROOM1 or /party/ROOM1
   const match = url.match(/parties\/[^/]+\/([^/?#]+)/) || url.match(/party\/([^/?#]+)/);
 
   if (match) {
     const roomCode = match[1].toUpperCase();
+    console.log(`[PartyHub Server] Routing client to room: ${roomCode}`);
     wss.handleUpgrade(req, socket, head, (ws) => {
       const r = getOrCreateRoom(roomCode);
       const connId = Math.random().toString(36).slice(2, 10);
@@ -158,7 +160,7 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`[PartyHub Server] ✓ Ready! Web & WebSockets listening together at http://localhost:${port}`);
+server.listen(port, "0.0.0.0", () => {
+  console.log(`[PartyHub Server] ✓ Ready! Web & WebSockets listening on 0.0.0.0:${port}`);
 });
 
