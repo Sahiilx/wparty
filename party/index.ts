@@ -80,7 +80,8 @@ export default class PartyServer implements Party.Server {
           this.roomState.hostId = newHostId;
           this.addSystemMessage(`${this.roomState.players[newHostId].name} is now the party leader.`);
         } else {
-          // No players left — stop game
+          // No connected players left — reset hostId so the next person who joins or reconnects becomes leader
+          this.roomState.hostId = '';
           this.stopTicker();
           this.roomState.status = 'lobby';
         }
@@ -154,21 +155,25 @@ export default class PartyServer implements Party.Server {
 
     switch (msg.type) {
       case 'JOIN_ROOM': {
-        const isFirst = Object.keys(this.roomState.players).length === 0 || !this.roomState.hostId;
-        const isHost = isFirst;
+        const activeHost = this.roomState.hostId && this.roomState.players[this.roomState.hostId]?.isConnected;
+        const isHost = !activeHost;
         if (isHost) {
           this.roomState.hostId = playerId;
         }
 
+        const existingPlayer = this.roomState.players[playerId];
         const newPlayer: Player = {
           id: playerId,
           name: msg.name.trim().slice(0, 16) || `Player_${playerId.slice(0, 4)}`,
           avatar: msg.avatar || '🎨',
-          isHost,
-          isReady: false,
-          score: 0,
+          isHost: isHost || (existingPlayer?.isHost ?? false),
+          isReady: existingPlayer?.isReady ?? false,
+          score: existingPlayer?.score ?? 0,
           isConnected: true,
         };
+        if (newPlayer.isHost) {
+          this.roomState.hostId = playerId;
+        }
 
         this.roomState.players[playerId] = newPlayer;
         this.addSystemMessage(`${newPlayer.name} joined the party!`);

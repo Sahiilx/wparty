@@ -50,11 +50,21 @@ export function usePartyRoom(roomCode: string) {
 
     const effectiveHost = partyHost || (typeof window !== "undefined" ? window.location.host : "localhost:3000");
 
+    let savedId: string | undefined = undefined;
+    if (typeof window !== "undefined") {
+      savedId = sessionStorage.getItem(`party_socket_id_${roomCode.toUpperCase()}`) || undefined;
+    }
+
     try {
       const socket = new PartySocket({
+        id: savedId,
         host: effectiveHost,
         room: roomCode.toUpperCase(),
       });
+
+      if (typeof window !== "undefined" && socket.id) {
+        sessionStorage.setItem(`party_socket_id_${roomCode.toUpperCase()}`, socket.id);
+      }
 
       socketRef.current = socket;
 

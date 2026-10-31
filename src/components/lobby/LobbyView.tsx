@@ -104,7 +104,7 @@ export function LobbyView({
   const [copied, setCopied] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const isHost = roomState.hostId === myId;
+  const isHost = roomState.hostId === myId || Boolean(roomState.players[myId]?.isHost);
   const me = roomState.players[myId];
   const players = Object.values(roomState.players).filter((p) => p.isConnected);
 

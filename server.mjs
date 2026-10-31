@@ -108,7 +108,8 @@ server.on("upgrade", (req, socket, head) => {
     console.log(`[PartyHub Server] Routing client to room: ${roomCode}`);
     wss.handleUpgrade(req, socket, head, (ws) => {
       const r = getOrCreateRoom(roomCode);
-      const connId = Math.random().toString(36).slice(2, 10);
+      const reqUrl = new URL(url, "http://localhost");
+      const connId = reqUrl.searchParams.get("_pk") || Math.random().toString(36).slice(2, 10);
 
       const conn = {
         id: connId,
