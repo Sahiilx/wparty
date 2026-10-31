@@ -10,7 +10,9 @@ export function usePartyRoom(roomCode: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [resolvedHost, setResolvedHost] = useState<string | null>(
-    process.env.NEXT_PUBLIC_PARTYKIT_HOST || null
+    (process.env.NEXT_PUBLIC_PARTYKIT_HOST && !process.env.NEXT_PUBLIC_PARTYKIT_HOST.includes("partykit.dev"))
+      ? process.env.NEXT_PUBLIC_PARTYKIT_HOST
+      : null
   );
   const [myId, setMyId] = useState<string>("");
   const socketRef = useRef<PartySocket | null>(null);
@@ -38,17 +40,15 @@ export function usePartyRoom(roomCode: string) {
 
     setConnectionError(null);
 
-    let partyHost = resolvedHost || process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    let partyHost: string | undefined = resolvedHost || process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    if (partyHost && partyHost.includes("partykit.dev")) {
+      partyHost = undefined;
+    }
     if (!partyHost && typeof window !== "undefined") {
-      const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-      if (isLocal) {
-        partyHost = "127.0.0.1:1999";
-      } else {
-        partyHost = window.location.host;
-      }
+      partyHost = window.location.host;
     }
 
-    const effectiveHost = partyHost || (typeof window !== "undefined" ? window.location.host : "localhost:1999");
+    const effectiveHost = partyHost || (typeof window !== "undefined" ? window.location.host : "localhost:3000");
 
     try {
       const socket = new PartySocket({
