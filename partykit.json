@@ -1,0 +1,7 @@
+{
+  "name": "party-platform",
+  "main": "party/index.ts",
+  "port": 1999,
+  "compatibilityDate": "2024-04-01"
+}
+
