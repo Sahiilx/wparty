@@ -252,7 +252,7 @@ export function DrawingCanvas({
 
     const now = Date.now();
     const pointsSinceChunk = currentStrokeRef.current.length - lastChunkIndexRef.current;
-    if (pointsSinceChunk >= 4 && now - lastBroadcastTimeRef.current >= 45 && onDrawCommand) {
+    if (pointsSinceChunk >= 2 && now - lastBroadcastTimeRef.current >= 16 && onDrawCommand) {
       const chunkPoints = currentStrokeRef.current.slice(lastChunkIndexRef.current);
       const cmd: DrawCommand = {
         type: "stroke",

@@ -733,12 +733,51 @@ export function MysteryGame({
 
         {/* Word Length / Hints on Top (Skribbl style) */}
         <div className="text-center">
-          <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider block">
-            {mystery.phase === "showcase_reveal" ? "ANSWER REVEALED" : "GUESS THE SHADOW PUZZLE"}
-          </span>
-          <span className="text-base md:text-xl font-mono font-black text-white tracking-widest uppercase">
-            {mystery.phase === "showcase_reveal" ? mystery.targetAnswer : mystery.revealedAnswer}
-          </span>
+          {isCreator && mystery.targetAnswer ? (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                Your Secret Silhouette
+              </span>
+              <span className="text-base md:text-xl font-black text-white tracking-wider uppercase bg-emerald-500/20 border border-emerald-500/30 px-3 py-0.5 rounded-xl">
+                {mystery.targetAnswer}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider block">
+                {mystery.phase === "showcase_reveal" ? "ANSWER REVEALED" : "GUESS THE SHADOW PUZZLE"}
+              </span>
+              <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                {mystery.phase === "showcase_reveal" ? (
+                  <span className="text-base md:text-xl font-black text-purple-300 tracking-wider uppercase">
+                    {mystery.targetAnswer}
+                  </span>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {(mystery.revealedAnswer || "").trim().split(/\s{2,}/).map((w, idx) => (
+                        <span
+                          key={idx}
+                          className="font-mono font-black text-white text-base md:text-xl tracking-widest bg-slate-950/60 px-2 py-0.5 rounded-lg border border-slate-800"
+                        >
+                          {w}
+                        </span>
+                      ))}
+                    </div>
+                    {mystery.revealedAnswer && (
+                      <span className="text-[11px] font-mono font-bold text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700">
+                        ({(mystery.revealedAnswer || "")
+                          .trim()
+                          .split(/\s{2,}/)
+                          .map((w) => w.split(/\s+/).filter(Boolean).length)
+                          .join(", ")})
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

@@ -124,7 +124,7 @@ export function SkribblGame({
               <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
                 Draw this word now
               </span>
-              <span className="text-base md:text-xl font-black text-white tracking-wider uppercase">
+              <span className="text-base md:text-xl font-black text-white tracking-wider uppercase bg-emerald-500/20 border border-emerald-500/30 px-3 py-0.5 rounded-xl">
                 {skribbl.secretWord}
               </span>
             </div>
@@ -133,9 +133,29 @@ export function SkribblGame({
               <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
                 {isDuel ? "Audience: Guess who's drawing it!" : "Guess the word"}
               </span>
-              <span className="text-base md:text-xl font-mono font-black text-white tracking-widest">
-                {skribbl.revealedWord}
-              </span>
+              <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                {skribbl.revealedWord && skribbl.revealedWord !== "Choosing word..." ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {skribbl.revealedWord.trim().split(/\s{2,}/).map((w, idx) => (
+                        <span
+                          key={idx}
+                          className="font-mono font-black text-white text-base md:text-xl tracking-widest bg-slate-950/60 px-2 py-0.5 rounded-lg border border-slate-800"
+                        >
+                          {w}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700">
+                      ({skribbl.revealedWord.trim().split(/\s{2,}/).map((w) => w.split(/\s+/).filter(Boolean).length).join(", ")})
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-base md:text-xl font-mono font-black text-white tracking-widest">
+                    {skribbl.revealedWord || "Choosing word..."}
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>

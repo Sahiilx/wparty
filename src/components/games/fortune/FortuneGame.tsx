@@ -151,8 +151,11 @@ export function FortuneGame({
 
         {/* Creator Notice */}
         {isCreator && fortune.phase === "guessing" && (
-          <div className="mt-2 text-xs font-semibold text-emerald-400">
-            You are the puzzle host! Watch your friends guess letters.
+          <div className="mt-2 text-xs font-semibold text-emerald-400 flex items-center justify-center gap-2 flex-wrap">
+            <span>You created this puzzle:</span>
+            <span className="font-black uppercase tracking-wider text-white bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 rounded-lg">
+              {fortune.secretPhrase || "Secret Puzzle"}
+            </span>
           </div>
         )}
       </div>

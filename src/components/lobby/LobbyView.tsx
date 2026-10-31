@@ -260,7 +260,7 @@ export function LobbyView({
                   {roomState.selectedGameId === "skribbl_duel" ? "Duel Timer" : "Draw Timer"}
                 </span>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {(roomState.selectedGameId === "skribbl_duel" ? [30, 45, 60, 90] : [45, 60, 75, 90, 120]).map(
+                  {(roomState.selectedGameId === "skribbl_duel" ? [30, 45, 60, 90] : [45, 60, 75, 90, 120, 150, 180, 240]).map(
                     (sec) => (
                       <button
                         key={sec}

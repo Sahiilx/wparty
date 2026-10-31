@@ -333,16 +333,40 @@ export default class PartyServer implements Party.Server {
             return;
           }
           if (guessResult.isClose) {
+            // Send close hint privately to the guesser only
             const closeMsg: ChatMessage = {
               id: Math.random().toString(36).slice(2),
               senderName: 'System',
-              text: `"${text}" is very close!`,
+              text: `"${text}" is very close! 🔥`,
               timestamp: Date.now(),
               type: 'guess_close',
             };
             sender.send(JSON.stringify({ type: 'CHAT_MESSAGE', message: closeMsg }));
+            // Also broadcast their guess text masked so others see they tried (but not what they typed)
+            const maskedMsg: ChatMessage = {
+              id: Math.random().toString(36).slice(2),
+              senderId: playerId,
+              senderName: player.name,
+              text: `is very close! 🔥`,
+              timestamp: Date.now(),
+              type: 'guess_close',
+            };
+            this.room.broadcast(JSON.stringify({ type: 'CHAT_MESSAGE', message: maskedMsg }));
             return;
           }
+          // Wrong guess — show in chat normally so it doesn't feel like it vanished
+          const wrongMsg: ChatMessage = {
+            id: Math.random().toString(36).slice(2),
+            senderId: playerId,
+            senderName: player.name,
+            text: text.slice(0, 80),
+            timestamp: Date.now(),
+            type: 'chat',
+          };
+          this.roomState.chat.push(wrongMsg);
+          if (this.roomState.chat.length > 50) this.roomState.chat.shift();
+          this.room.broadcast(JSON.stringify({ type: 'CHAT_MESSAGE', message: wrongMsg }));
+          return;
         }
 
         // 2. Word Fortune Solve Check
@@ -396,16 +420,40 @@ export default class PartyServer implements Party.Server {
             return;
           }
           if (guessResult.isClose) {
+            // Private close hint to guesser
             const closeMsg: ChatMessage = {
               id: Math.random().toString(36).slice(2),
               senderName: 'System',
-              text: `"${text}" is super close!`,
+              text: `"${text}" is super close! 🔥`,
               timestamp: Date.now(),
               type: 'guess_close',
             };
             sender.send(JSON.stringify({ type: 'CHAT_MESSAGE', message: closeMsg }));
+            // Show others that this player is close, without revealing text
+            const maskedMsg: ChatMessage = {
+              id: Math.random().toString(36).slice(2),
+              senderId: playerId,
+              senderName: player.name,
+              text: `is super close! 🔥`,
+              timestamp: Date.now(),
+              type: 'guess_close',
+            };
+            this.room.broadcast(JSON.stringify({ type: 'CHAT_MESSAGE', message: maskedMsg }));
             return;
           }
+          // Wrong guess — still show in chat
+          const wrongMsg: ChatMessage = {
+            id: Math.random().toString(36).slice(2),
+            senderId: playerId,
+            senderName: player.name,
+            text: text.slice(0, 80),
+            timestamp: Date.now(),
+            type: 'chat',
+          };
+          this.roomState.chat.push(wrongMsg);
+          if (this.roomState.chat.length > 50) this.roomState.chat.shift();
+          this.room.broadcast(JSON.stringify({ type: 'CHAT_MESSAGE', message: wrongMsg }));
+          return;
         }
 
         // Standard chat
