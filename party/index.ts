@@ -12,6 +12,7 @@ import { MysteryEngine } from "./games/mystery";
 import { GarticEngine } from "./games/gartic";
 import { ImposterEngine } from "./games/imposter";
 import { QuizEngine } from "./games/quiz";
+import { MastermindEngine } from "./games/mastermind";
 
 export default class PartyServer implements Party.Server {
   roomState: RoomState;
@@ -68,6 +69,7 @@ export default class PartyServer implements Party.Server {
           this.roomState.garticState = undefined;
           this.roomState.imposterState = undefined;
           this.roomState.quizState = undefined;
+          this.roomState.mastermindState = undefined;
           this.addSystemMessage(`Party host disconnected — match ended and returned to lobby.`);
         }
 
@@ -114,8 +116,14 @@ export default class PartyServer implements Party.Server {
           if (remaining.length > 0) {
             f.currentTurnPlayerId = remaining[0];
           } else {
-            f.phase = 'round_recap';
-            f.timer = 8;
+            const connectedGuessers = f.guesserOrder.filter(id => playerIds.includes(id));
+            if (connectedGuessers.length > 0) {
+              f.usedTurnPlayerIds = [];
+              f.currentTurnPlayerId = connectedGuessers[0];
+            } else {
+              f.phase = 'round_recap';
+              f.timer = 8;
+            }
           }
         }
 
@@ -216,6 +224,7 @@ export default class PartyServer implements Party.Server {
             gartic: "📞 Telephone Tale",
             word_imposter: "🕵️ Word Imposter",
             quiz_kbc: "💰 Crorepati Quiz (15 Qs)",
+            mastermind: "🔫 Mastermind Protocol",
           };
           this.addSystemMessage(`Party leader selected ${gameNames[msg.gameId] || msg.gameId}`);
           this.broadcastState();
@@ -270,6 +279,16 @@ export default class PartyServer implements Party.Server {
             this.startTicker();
             this.addSystemMessage(`💰 Crorepati Quiz started! 15 Questions, 4 Lifelines. Lock your answers!`);
             this.broadcastState();
+          } else if (this.roomState.selectedGameId === 'mastermind') {
+            const playerCount = Object.values(this.roomState.players).filter(p => p.isConnected).length;
+            if (playerCount < 5) {
+              sender.send(JSON.stringify({ type: 'ERROR', message: 'Mastermind Protocol requires at least 5 players!' }));
+              break;
+            }
+            MastermindEngine.initGame(this.roomState);
+            this.startTicker();
+            this.addSystemMessage(`🔫 Mastermind Protocol started! Cards are being dealt...`);
+            this.broadcastState();
           }
         }
         break;
@@ -286,6 +305,7 @@ export default class PartyServer implements Party.Server {
           this.roomState.garticState = undefined;
           this.roomState.imposterState = undefined;
           this.roomState.quizState = undefined;
+          this.roomState.mastermindState = undefined;
           this.addSystemMessage(`Game ended by leader. Returned to party lobby.`);
           this.broadcastState();
         }
@@ -706,6 +726,56 @@ export default class PartyServer implements Party.Server {
         }
         break;
       }
+
+      case 'MASTERMIND_SUBMIT_MINIGAME_SCORE': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.submitMinigameScore(this.roomState, playerId, msg.score);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_BUY_ITEM': {
+        if (this.roomState.status === 'playing') {
+          const ok = MastermindEngine.buyItem(this.roomState, playerId, msg.item);
+          if (ok) {
+            const p = this.roomState.players[playerId];
+            this.addSystemMessage(`🛒 ${p?.name || 'Player'} purchased an item from the shop!`);
+            this.broadcastState();
+          }
+        }
+        break;
+      }
+
+      case 'MASTERMIND_USE_ABILITY': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.useAbility(this.roomState, playerId, msg.abilityType, msg.targetId);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_VOTE_SUSPECT': {
+        if (this.roomState.status === 'playing') {
+          const ok = MastermindEngine.vote(this.roomState, playerId, msg.suspectId);
+          if (ok) {
+            const p = this.roomState.players[playerId];
+            this.addSystemMessage(`🗳️ ${p?.name || 'Player'} cast their vote!`);
+            this.broadcastState();
+          }
+        }
+        break;
+      }
+
+      case 'MASTERMIND_NEXT_PHASE': {
+        // Host can force-advance the phase
+        const hp = this.roomState.players[playerId];
+        if (hp?.isHost && this.roomState.mastermindState) {
+          this.roomState.mastermindState.timer = 0;
+          this.broadcastState();
+        }
+        break;
+      }
     }
   }
 
@@ -725,6 +795,8 @@ export default class PartyServer implements Party.Server {
           ImposterEngine.tick(this.roomState);
         } else if (this.roomState.selectedGameId === 'quiz_kbc') {
           QuizEngine.tick(this.roomState);
+        } else if (this.roomState.selectedGameId === 'mastermind') {
+          MastermindEngine.tick(this.roomState);
         }
         this.broadcastState();
       }

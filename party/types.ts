@@ -20,7 +20,7 @@ export interface ChatMessage {
   targetBoard?: '1' | '2';
 }
 
-export type GameId = 'skribbl' | 'skribbl_duel' | 'word_fortune' | 'mystery_reveal' | 'gartic' | 'word_imposter' | 'quiz_kbc';
+export type GameId = 'skribbl' | 'skribbl_duel' | 'word_fortune' | 'mystery_reveal' | 'gartic' | 'word_imposter' | 'quiz_kbc' | 'mastermind';
 
 export interface RoomSettings {
   roundTime: number;
@@ -47,9 +47,16 @@ export interface RoomSettings {
   shadowGuessTime: number; // 45, 60, 75, 90, 120
   shadowBgColor: string; // hex color e.g. '#ffffff'
 
+  // Word Imposter specific
+  imposterClueRounds?: number; // 2 to 7 rounds before guessing
+
   // KBC Quiz specific
   quizCategory?: string; // 'All' | 'Geography' | 'Science' | 'History' | 'Math' | 'Sports' | 'Art' | 'Tech'
   quizDifficulty?: 'progressive' | 'easy' | 'medium' | 'hard' | 'mixed';
+
+  // Mastermind Protocol specific
+  mastermindMiniGameTime?: number;
+  mastermindAbilityTime?: number;
 }
 
 export interface DrawStroke {
@@ -61,9 +68,12 @@ export interface DrawStroke {
 
 export type DrawCommand = 
   | { type: 'stroke'; stroke: DrawStroke; canvasId?: '1' | '2' }
+  | { type: 'spray'; stroke: DrawStroke; canvasId?: '1' | '2' }
+  | { type: 'line'; start: { x: number; y: number }; end: { x: number; y: number }; color: string; size: number; opacity?: number; canvasId?: '1' | '2' }
+  | { type: 'shape'; shape: 'rect' | 'circle' | 'triangle'; fill: boolean; start: { x: number; y: number }; end: { x: number; y: number }; color: string; size: number; opacity?: number; canvasId?: '1' | '2' }
   | { type: 'clear'; canvasId?: '1' | '2' }
-  | { type: 'fill'; color: string; canvasId?: '1' | '2' }
-  | { type: 'lasso'; points: { x: number; y: number }[]; color: string; canvasId?: '1' | '2' };
+  | { type: 'fill'; color: string; x: number; y: number; opacity?: number; canvasId?: '1' | '2' }
+  | { type: 'lasso'; points: { x: number; y: number }[]; color: string; opacity?: number; fill?: boolean; canvasId?: '1' | '2' };
 
 // --- 1. Skribbl & Duo Duel State ---
 export interface SkribblGameState {
@@ -174,6 +184,8 @@ export interface ImposterGameState {
   phase: 'clue_giving' | 'voting' | 'reveal' | 'imposter_guess' | 'round_recap' | 'game_over';
   currentRound: number;
   totalRounds: number;
+  currentClueRound: number;
+  totalClueRounds: number;
   imposterId: string;
   secretWord: string;
   imposterWord: string;
@@ -224,6 +236,45 @@ export interface QuizGameState {
   answerSummary?: Record<string, { answer: string; isCorrect: boolean; points: number }>; // reveal phase breakdown
 }
 
+// --- 7. Mastermind Protocol (The Devil's Plan Strategy Game) ---
+export type MastermindRole = 'killer' | 'sheriff' | 'soldier' | 'doctor' | 'thief' | 'joker' | 'wizard' | 'hacker' | 'hitman' | 'judge';
+export type MastermindHealth = 'healthy' | 'wounded' | 'dead';
+export type MastermindItem = 'vest' | 'wiretap' | 'smoke' | 'adrenaline' | 'ammo';
+
+export interface MastermindPlayerInfo {
+  id: string;
+  name: string;
+  role: MastermindRole;
+  team: 'syndicate' | 'town' | 'neutral';
+  health: MastermindHealth;
+  cash: number;
+  medpacks: number;
+  shields: number;
+  inventory: MastermindItem[];
+  bleedRoundsLeft?: number;
+  isShieldedThisRound?: boolean;
+  wasInvestigated?: boolean;
+  investigationResult?: 'Innocent' | 'Suspicious';
+  selectedAbilityTarget?: string;
+  selectedAbilityType?: string;
+  minigameScore?: number;
+  mvpPoints: number;
+}
+
+export interface MastermindGameState {
+  phase: 'role_reveal' | 'minigame' | 'shop' | 'night_ability' | 'morning_news' | 'deliberation_vote' | 'game_over';
+  currentRound: number;
+  totalRounds: number;
+  timer: number;
+  players: Record<string, MastermindPlayerInfo>;
+  nightNews: string[];
+  votes: Record<string, string>; // voterId -> suspectId
+  jailedPlayerId?: string;
+  winner?: 'town' | 'syndicate' | 'joker' | 'wizard';
+  mvpPlayerId?: string;
+  minigameTargetScore?: number;
+}
+
 export interface RoomState {
   code: string;
   hostId: string;
@@ -238,6 +289,7 @@ export interface RoomState {
   garticState?: GarticGameState;
   imposterState?: Omit<ImposterGameState, 'secretWord' | 'imposterWord'> & { secretWord?: string; imposterWord?: string };
   quizState?: Omit<QuizGameState, 'lockedAnswers' | 'doubleSecondAnswers'> & { lockedAnswers?: Record<string, string>; doubleSecondAnswers?: Record<string, string> };
+  mastermindState?: MastermindGameState;
 }
 
 // Client -> Server messages
@@ -276,7 +328,13 @@ export type ClientMessage =
   | { type: 'IMPOSTER_GUESS_WORD'; guess: string }
   // Quiz KBC
   | { type: 'QUIZ_LOCK_ANSWER'; answer: string; isDouble?: boolean }
-  | { type: 'QUIZ_USE_LIFELINE'; lifeline: QuizLifeline };
+  | { type: 'QUIZ_USE_LIFELINE'; lifeline: QuizLifeline }
+  // Mastermind Protocol
+  | { type: 'MASTERMIND_SUBMIT_MINIGAME_SCORE'; score: number }
+  | { type: 'MASTERMIND_BUY_ITEM'; item: MastermindItem }
+  | { type: 'MASTERMIND_USE_ABILITY'; abilityType: string; targetId?: string }
+  | { type: 'MASTERMIND_VOTE_SUSPECT'; suspectId: string }
+  | { type: 'MASTERMIND_NEXT_PHASE' };
 
 // Server -> Client messages
 export type ServerMessage =

@@ -1,7 +1,7 @@
 export interface PhraseEntry {
   phrase: string;
   category: string;
-  language: 'English' | 'Hinglish' | 'French' | 'Spanish';
+  language?: 'English' | 'Hinglish' | 'French' | 'Spanish' | string;
   hint?: string;
 }
 
@@ -151,11 +151,22 @@ export const MASSIVE_PHRASES: PhraseEntry[] = [
   { phrase: "SPILL THE BEANS", category: "💡 Everyday Idioms", language: "English" }
 ];
 
+import { getFortunePhrases } from "./word-manager";
+
+export function getAllPhrases(): PhraseEntry[] {
+  const dynamic = getFortunePhrases();
+  const map = new Map<string, PhraseEntry>();
+  for (const p of MASSIVE_PHRASES) map.set(p.phrase.toUpperCase(), p);
+  for (const p of dynamic) map.set(p.phrase.toUpperCase(), p);
+  return Array.from(map.values());
+}
+
 export function getRandomPhrase(language?: string, category?: string): PhraseEntry {
-  let filtered = MASSIVE_PHRASES;
+  const all = getAllPhrases();
+  let filtered = all;
 
   if (language && language !== "All") {
-    filtered = filtered.filter(p => p.language.toLowerCase() === language.toLowerCase());
+    filtered = filtered.filter(p => (p.language || "English").toLowerCase() === language.toLowerCase());
   }
 
   if (category && category !== "All") {
@@ -163,7 +174,7 @@ export function getRandomPhrase(language?: string, category?: string): PhraseEnt
   }
 
   if (filtered.length === 0) {
-    filtered = MASSIVE_PHRASES;
+    filtered = all;
   }
 
   const pick = filtered[Math.floor(Math.random() * filtered.length)];

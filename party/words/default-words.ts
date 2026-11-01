@@ -1,35 +1,20 @@
+import { getDrawingWords } from "./word-manager";
+
 export const DEFAULT_WORDS: string[] = [
-  // Animals & Nature
   "cat", "dog", "elephant", "giraffe", "dolphin", "penguin", "lion", "tiger", "bear", "rabbit",
   "monkey", "kangaroo", "panda", "fox", "owl", "butterfly", "spider", "shark", "whale", "turtle",
-  "tree", "flower", "mountain", "river", "ocean", "sun", "moon", "star", "cloud", "rainbow",
-  "volcano", "desert", "island", "forest", "cactus", "lightning", "snowflake", "waterfall",
-
-  // Food & Drinks
   "pizza", "burger", "taco", "sushi", "ice cream", "cookie", "cake", "apple", "banana", "watermelon",
   "coffee", "tea", "donut", "hot dog", "french fries", "cheese", "popcorn", "sandwich", "spaghetti",
-  "pancake", "strawberry", "pineapple", "chocolate", "cupcake", "lollipop",
-
-  // Everyday Objects & Tools
   "chair", "table", "bed", "lamp", "clock", "television", "computer", "phone", "book", "pencil",
   "scissors", "backpack", "umbrella", "glasses", "guitar", "piano", "drum", "camera", "key", "wallet",
-  "mirror", "toothbrush", "headphones", "bicycle", "skateboard", "roller skates", "paintbrush",
-
-  // Places & Buildings
-  "castle", "lighthouse", "hospital", "school", "library", "airport", "pyramid", "bridge", "house",
-  "tent", "igloo", "space station", "stadium", "supermarket", "cinema", "hotel",
-
-  // People, Roles & Fantasy
-  "pirate", "astronaut", "ninja", "wizard", "superhero", "robot", "alien", "ghost", "vampire",
-  "zombie", "chef", "detective", "doctor", "firefighter", "police", "king", "queen", "clown", "mermaid",
-
-  // Vehicles
-  "car", "airplane", "rocket", "submarine", "helicopter", "train", "bus", "boat", "motorcycle",
-  "hot air balloon", "tractor", "ambulance", "fire truck"
+  "samosa", "chai", "biryani", "gulab jamun", "dosa", "pani puri", "jalebi", "naan", "pakora",
+  "cricket bat", "auto rickshaw", "taj mahal", "diya", "tabla", "flute", "spiderman", "batman",
+  "lightsaber", "pokeball", "mario", "pikachu", "doraemon", "shinchan", "shrek"
 ];
 
 export function getRandomWords(count: number = 3): string[] {
-  const shuffled = [...DEFAULT_WORDS].sort(() => 0.5 - Math.random());
+  const pool = getDrawingWords().length > 0 ? getDrawingWords() : DEFAULT_WORDS;
+  const shuffled = [...pool].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
 }
 
@@ -68,4 +53,3 @@ export function isCloseGuess(guess: string, target: string): boolean {
   }
   return true;
 }
-

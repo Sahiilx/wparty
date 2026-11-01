@@ -1,4 +1,5 @@
 import { RoomState, ImposterGameState } from '../types';
+import { getImposterPairs } from '../words/word-manager';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -81,15 +82,19 @@ export class ImposterEngine {
       roomState.players[id].score = 0;
     }
 
-    const pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    const pairs = getImposterPairs();
+    const pair = pairs[Math.floor(Math.random() * pairs.length)];
     const imposterIdx = Math.floor(Math.random() * playerIds.length);
     const imposterId = playerIds[imposterIdx];
     const speakerOrder = shuffle([...playerIds]);
 
+    const totalClueRounds = Math.max(1, Math.min(7, roomState.settings.imposterClueRounds ?? 3));
     roomState.imposterState = {
       phase: 'clue_giving',
       currentRound: 1,
       totalRounds: roomState.settings.totalRounds || 3,
+      currentClueRound: 1,
+      totalClueRounds,
       imposterId,
       secretWord: pair.secret,
       imposterWord: pair.imposter,
@@ -128,9 +133,20 @@ export class ImposterEngine {
     const allSubmitted = playerIds.every(id => g.submittedClueIds.includes(id));
 
     if (allSubmitted) {
-      g.phase = 'voting';
-      g.votes = {};
-      g.timer = 45;
+      // Check if we need another clue round
+      if (g.currentClueRound < g.totalClueRounds) {
+        // Start another clue round
+        g.currentClueRound += 1;
+        g.submittedClueIds = [];
+        g.speakerOrder = shuffle([...playerIds]);
+        g.currentSpeakerId = g.speakerOrder[0];
+        g.timer = 30;
+      } else {
+        // All clue rounds complete → go to voting
+        g.phase = 'voting';
+        g.votes = {};
+        g.timer = 45;
+      }
     } else {
       // Next speaker who hasn't gone yet
       const currentIdx = g.speakerOrder.indexOf(playerId);
@@ -281,9 +297,18 @@ export class ImposterEngine {
         const playerIds = Object.keys(roomState.players).filter(id => roomState.players[id].isConnected);
         const allSubmitted = playerIds.every(id => g.submittedClueIds.includes(id));
         if (allSubmitted) {
-          g.phase = 'voting';
-          g.votes = {};
-          g.timer = 45;
+          if (g.currentClueRound < g.totalClueRounds) {
+            // Start another clue round
+            g.currentClueRound += 1;
+            g.submittedClueIds = [];
+            g.speakerOrder = shuffle([...playerIds]);
+            g.currentSpeakerId = g.speakerOrder[0];
+            g.timer = 30;
+          } else {
+            g.phase = 'voting';
+            g.votes = {};
+            g.timer = 45;
+          }
         } else {
           const currentIdx = g.speakerOrder.indexOf(g.currentSpeakerId);
           for (let i = 1; i <= g.speakerOrder.length; i++) {
@@ -352,7 +377,8 @@ export class ImposterEngine {
 
         // Next round
         g.currentRound += 1;
-        const pair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+        const pairs = getImposterPairs();
+    const pair = pairs[Math.floor(Math.random() * pairs.length)];
         const imposterIdx = Math.floor(Math.random() * playerIds.length);
         g.imposterId = playerIds[imposterIdx];
         g.secretWord = pair.secret;
@@ -362,6 +388,7 @@ export class ImposterEngine {
         g.submittedClueIds = [];
         g.clues = [];
         g.votes = {};
+        g.currentClueRound = 1;
         g.phase = 'clue_giving';
         g.timer = 30;
         delete g.roundWinner;

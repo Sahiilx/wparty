@@ -70,6 +70,9 @@ export const ImposterGame: React.FC<ImposterGameProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase font-extrabold tracking-wider text-rose-400">
                 Round {imp.currentRound} of {imp.totalRounds}
+                {imp.phase === "clue_giving" && imp.totalClueRounds > 1 && (
+                  <span className="text-indigo-300 ml-2">· Clue Round {imp.currentClueRound ?? 1} of {imp.totalClueRounds}</span>
+                )}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 border border-indigo-700/50 text-indigo-300">
                 Word Imposter

@@ -11,6 +11,7 @@ import { MysteryGame } from "@/components/games/mystery/MysteryGame";
 import { GarticGame } from "@/components/games/gartic/GarticGame";
 import { QuizGame } from "@/components/games/quiz/QuizGame";
 import { ImposterGame } from "@/components/games/imposter/ImposterGame";
+import { MastermindGame } from "@/components/games/mastermind/MastermindGame";
 import { PartyChat } from "@/components/chat/PartyChat";
 import { ProfileModal } from "@/components/lobby/ProfileModal";
 import { ServerStatusBadge } from "@/components/common/ServerStatusBadge";
@@ -67,6 +68,11 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
     submitImposterClue,
     voteImposter,
     guessImposterWord,
+    submitMastermindMinigameScore,
+    buyMastermindItem,
+    useMastermindAbility,
+    voteMastermindSuspect,
+    nextMastermindPhase,
     skipTimer,
   } = usePartyRoom(roomCode);
 
@@ -175,7 +181,7 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
   const me = roomState.players[myId];
 
   return (
-    <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-950 overflow-hidden relative">
       {/* Top Navigation Bar */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -219,6 +225,20 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
 
       {/* Main Play Area & Chat */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden p-3 gap-3">
+        {/* Disconnected Banner */}
+        {!isConnected && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-rose-950/95 border border-rose-500/50 rounded-2xl shadow-2xl shadow-rose-900/60 animate-fade-in">
+            <WifiOff className="w-4 h-4 text-rose-400 animate-pulse" />
+            <span className="text-sm font-bold text-rose-300">Disconnected</span>
+            <button
+              onClick={reconnect}
+              className="ml-2 px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-all"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Reconnect
+            </button>
+          </div>
+        )}
         {/* Left / Game Content Stage */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {roomState.status === "lobby" ? (
@@ -276,6 +296,17 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
               onSubmitClue={submitImposterClue}
               onVote={voteImposter}
               onGuessWord={guessImposterWord}
+              onReturnToLobby={returnToLobby}
+              onSkipTimer={skipTimer}
+            />
+          ) : roomState.selectedGameId === "mastermind" ? (
+            <MastermindGame
+              roomState={roomState}
+              myId={myId}
+              onSubmitMinigameScore={submitMastermindMinigameScore}
+              onBuyItem={buyMastermindItem}
+              onUseAbility={useMastermindAbility}
+              onVoteSuspect={voteMastermindSuspect}
               onReturnToLobby={returnToLobby}
               onSkipTimer={skipTimer}
             />

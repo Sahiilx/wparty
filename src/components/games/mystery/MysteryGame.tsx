@@ -159,6 +159,13 @@ export function MysteryGame({
   const [lassoPoints, setLassoPoints] = useState<{ x: number; y: number }[]>([]);
   const [lassoHoverPoint, setLassoHoverPoint] = useState<{ x: number; y: number } | null>(null);
 
+  const handleUndoLassoPoint = () => {
+    if (lassoPoints.length === 0) return;
+    const updated = lassoPoints.slice(0, -1);
+    setLassoPoints(updated);
+    renderLassoOverlay(lassoHoverPoint, updated);
+  };
+
   // Canvas refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -225,6 +232,12 @@ export function MysteryGame({
     if (!studioOpen && mystery.phase !== "prep") return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (activeTool === "lasso" && lassoPoints.length > 0 && (e.key === "Backspace" || ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey))) {
+        e.preventDefault();
+        handleUndoLassoPoint();
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
         e.preventDefault();
         if (e.shiftKey) {
@@ -245,7 +258,7 @@ export function MysteryGame({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isCreator, mystery.phase, undoStack.length, redoStack.length]);
+  }, [isCreator, mystery.phase, undoStack.length, redoStack.length, activeTool, lassoPoints.length]);
 
   const pushSnapshot = useCallback(() => {
     const canvas = canvasRef.current;
@@ -389,16 +402,28 @@ export function MysteryGame({
       }
     }
 
+    // Sample target seed colors
+    const targetColors: Array<{ r: number; g: number; b: number; a: number }> = [];
+    for (const seed of seeds) {
+      const sx = Math.floor(seed.x);
+      const sy = Math.floor(seed.y);
+      if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+        const sOff = (sy * w + sx) * 4;
+        targetColors.push({
+          r: data[sOff],
+          g: data[sOff + 1],
+          b: data[sOff + 2],
+          a: data[sOff + 3],
+        });
+      }
+    }
+
     let qHead = 0;
     while (qHead < queue.length) {
       const idx = queue[qHead++];
       const px = idx % w;
       const py = Math.floor(idx / w);
       const pOffset = idx * 4;
-
-      const pr = data[pOffset];
-      const pg = data[pOffset + 1];
-      const pb = data[pOffset + 2];
 
       // Erase this background pixel
       data[pOffset + 3] = 0;
@@ -428,9 +453,17 @@ export function MysteryGame({
         const ng = data[nOffset + 1];
         const nb = data[nOffset + 2];
 
-        // Color distance to current pixel
-        const diff = Math.sqrt((nr - pr) ** 2 + (ng - pg) ** 2 + (nb - pb) ** 2);
-        if (diff <= tolerance) {
+        // Compare against target seed colors (prevents gradient color-drift)
+        let matches = false;
+        for (const tc of targetColors) {
+          const diff = Math.sqrt((nr - tc.r) ** 2 + (ng - tc.g) ** 2 + (nb - tc.b) ** 2);
+          if (diff <= tolerance) {
+            matches = true;
+            break;
+          }
+        }
+
+        if (matches) {
           visited[nIdx] = 1;
           queue.push(nIdx);
         }
@@ -1147,19 +1180,32 @@ export function MysteryGame({
 
               {/* Lasso Status / Action Helper */}
               {activeTool === "lasso" && (
-                <div className="w-full px-2 py-1 bg-purple-500/10 border border-purple-500/30 rounded-xl flex items-center justify-between text-xs text-purple-300">
-                  <span>
-                    Lasso: {lassoPoints.length} points placed. Double-click or click start point to close.
+                <div className="w-full px-2 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-xl flex items-center justify-between text-xs text-purple-300 gap-2">
+                  <span className="truncate">
+                    🧲 Lasso: {lassoPoints.length} points placed.
                   </span>
-                  {lassoPoints.length >= 3 && (
-                    <button
-                      type="button"
-                      onClick={() => finishLassoPolygon(lassoPoints)}
-                      className="px-2 py-0.5 bg-purple-600 text-white font-bold rounded-lg text-[10px]"
-                    >
-                      Fill Polygon Mask
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {lassoPoints.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleUndoLassoPoint}
+                        className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-purple-200 border border-purple-500/30 font-bold rounded-lg text-[10px] flex items-center gap-1"
+                        title="Undo last point (Backspace or Ctrl+Z)"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5 text-amber-400" />
+                        <span>Undo Point</span>
+                      </button>
+                    )}
+                    {lassoPoints.length >= 3 && (
+                      <button
+                        type="button"
+                        onClick={() => finishLassoPolygon(lassoPoints)}
+                        className="px-2.5 py-0.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-[10px] shadow"
+                      >
+                        Fill Polygon Mask
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

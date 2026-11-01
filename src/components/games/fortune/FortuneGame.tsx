@@ -41,7 +41,7 @@ export function FortuneGame({
   const filteredSuggestions = useMemo(() => {
     let list = MASSIVE_PHRASES;
     if (selectedLang !== "All") {
-      list = list.filter((p) => p.language.toLowerCase() === selectedLang.toLowerCase());
+      list = list.filter((p) => (p.language || "English").toLowerCase() === selectedLang.toLowerCase());
     }
     if (selectedCategory !== "All") {
       list = list.filter((p) => p.category.toLowerCase().includes(selectedCategory.toLowerCase()));

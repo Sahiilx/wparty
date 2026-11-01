@@ -265,32 +265,29 @@ export class FortuneEngine {
     return { isMatch: false, points: 0, penalty, isAttempt: true };
   }
 
-  /** Advances turn to next player; if all used their turn, ends guessing */
+  /** Advances turn to next player; when round of turns completes, resets used turns so players keep rotating until timer runs out or puzzle is solved */
   private static advanceTurn(roomState: RoomState, playerIds: string[]): void {
     const f = roomState.fortuneState;
     if (!f) return;
-    const remaining = f.guesserOrder.filter(id => !f.usedTurnPlayerIds.includes(id));
-    if (remaining.length === 0) {
+
+    // Filter connected guessers
+    const connectedGuessers = f.guesserOrder.filter(id => playerIds.includes(id));
+    if (connectedGuessers.length === 0) {
       f.phase = 'round_recap';
       f.timer = 8;
       return;
     }
 
-    const currentIdx = f.guesserOrder.indexOf(f.currentTurnPlayerId);
-    let nextPlayer = '';
-    for (let i = 1; i <= f.guesserOrder.length; i++) {
-      const candidate = f.guesserOrder[(currentIdx + i) % f.guesserOrder.length];
-      if (!f.usedTurnPlayerIds.includes(candidate) && playerIds.includes(candidate)) {
-        nextPlayer = candidate;
-        break;
-      }
+    let remaining = connectedGuessers.filter(id => !f.usedTurnPlayerIds.includes(id));
+    if (remaining.length === 0) {
+      // Loop rotation: reset used turns so another round of guesses can occur
+      f.usedTurnPlayerIds = [];
+      remaining = connectedGuessers;
     }
-    if (nextPlayer) {
-      f.currentTurnPlayerId = nextPlayer;
-    } else {
-      f.phase = 'round_recap';
-      f.timer = 8;
-    }
+
+    const currentIdx = connectedGuessers.indexOf(f.currentTurnPlayerId);
+    const nextIdx = (currentIdx + 1) % connectedGuessers.length;
+    f.currentTurnPlayerId = connectedGuessers[nextIdx] ?? connectedGuessers[0];
   }
 
   static tick(roomState: RoomState): { phaseChanged: boolean } {
