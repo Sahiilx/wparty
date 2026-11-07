@@ -267,3 +267,4 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     effect: 'Grants instant extra sector traversal and double mini-game score.',
   },
 ];
+

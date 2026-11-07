@@ -452,3 +452,4 @@ export const WhiteHouseMap3D: React.FC<WhiteHouseMap3DProps> = ({
     </div>
   );
 };
+

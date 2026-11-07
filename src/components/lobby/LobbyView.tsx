@@ -30,11 +30,11 @@ const AVAILABLE_GAMES: {
   {
     id: "mastermind",
     name: "🔫 Mastermind Protocol (Devil's Plan)",
-    badge: "5+ PLAYERS",
-    desc: "Devil's Plan deception! Secret roles (Killer, Sheriff, Doctor, Soldier, Thief). Compete in financial mini-games, purchase tactical items, and deliberate in tribunal!",
+    badge: "SOLO / 5+ PLAYERS",
+    desc: "Devil's Plan deception! Secret roles (Killer, Sheriff, Doctor, Soldier, Thief). Solo test enabled (missing slots auto-filled with AI simulated operatives).",
     icon: Crosshair,
     color: "from-rose-600 via-purple-600 to-amber-600",
-    minPlayers: 5,
+    minPlayers: 1,
     category: "brain",
   },
   {
@@ -208,6 +208,11 @@ export function LobbyView({
                   {!hasEnoughPlayers && (
                     <span className="text-[10px] text-amber-400 font-bold">
                       Requires at least {minReq} players ({players.length} in room)
+                    </span>
+                  )}
+                  {selectedGame?.id === "mastermind" && players.length < 5 && (
+                    <span className="text-[10px] text-cyan-400 font-semibold flex items-center gap-1">
+                      🤖 Solo test active: {5 - players.length} AI Bot{5 - players.length > 1 ? "s" : ""} will join match!
                     </span>
                   )}
                 </div>

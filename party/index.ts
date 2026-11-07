@@ -282,8 +282,7 @@ export default class PartyServer implements Party.Server {
           } else if (this.roomState.selectedGameId === 'mastermind') {
             const playerCount = Object.values(this.roomState.players).filter(p => p.isConnected).length;
             if (playerCount < 5) {
-              sender.send(JSON.stringify({ type: 'ERROR', message: 'Mastermind Protocol requires at least 5 players!' }));
-              break;
+              this.addSystemMessage(`🤖 Solo/Small party test detected: Adding AI Simulated Operatives to complete 5-player protocol!`);
             }
             MastermindEngine.initGame(this.roomState);
             this.startTicker();
@@ -321,6 +320,7 @@ export default class PartyServer implements Party.Server {
           else if (this.roomState.garticState) this.roomState.garticState.timer = 0;
           else if (this.roomState.imposterState) this.roomState.imposterState.timer = 0;
           else if (this.roomState.quizState) this.roomState.quizState.timer = 0;
+          else if (this.roomState.mastermindState) this.roomState.mastermindState.timer = 0;
           this.broadcastState();
         }
         break;

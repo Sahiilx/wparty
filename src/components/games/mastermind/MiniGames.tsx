@@ -281,3 +281,4 @@ export const AverageBiddingTerminal: React.FC<AverageBiddingMiniGameProps> = ({
     </div>
   );
 };
+

@@ -53,7 +53,34 @@ export class MastermindEngine {
     const playerIds = Object.keys(roomState.players).filter(
       (id) => roomState.players[id].isConnected
     );
-    if (playerIds.length < 5) return; // Need at least 5 players
+
+    // Auto-fill missing slots with AI Bots so any number of players (even 1 player solo) can play and test!
+    const BOT_PRESETS = [
+      { name: 'Agent Alpha (Bot)', avatar: '🤖' },
+      { name: 'Agent Beta (Bot)', avatar: '🕵️' },
+      { name: 'Agent Gamma (Bot)', avatar: '🦾' },
+      { name: 'Agent Delta (Bot)', avatar: '⚡' },
+      { name: 'Agent Epsilon (Bot)', avatar: '💻' },
+    ];
+
+    let botIdx = 0;
+    while (playerIds.length < 5 && botIdx < BOT_PRESETS.length) {
+      const botId = `bot_${botIdx + 1}`;
+      const preset = BOT_PRESETS[botIdx];
+      roomState.players[botId] = {
+        id: botId,
+        name: preset.name,
+        avatar: preset.avatar,
+        isHost: false,
+        isReady: true,
+        score: 0,
+        isConnected: true,
+      };
+      playerIds.push(botId);
+      botIdx++;
+    }
+
+    if (playerIds.length < 5) return;
 
     // Assign roles based on player count
     const numPlayers = playerIds.length;
@@ -516,6 +543,71 @@ export class MastermindEngine {
     }
   }
 
+  private static autoAssignBotAbilities(g: MastermindGameState): void {
+    const living = Object.values(g.players).filter((p) => p.health !== 'dead');
+    const allLivingIds = living.map((p) => p.id);
+
+    for (const bot of living.filter((p) => p.id.startsWith('bot_'))) {
+      if (bot.selectedAbilityType) continue; // Already selected
+
+      const potentialTargets = allLivingIds.filter((id) => id !== bot.id);
+      if (potentialTargets.length === 0) continue;
+      const randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+
+      switch (bot.role) {
+        case 'killer':
+          if (g.currentRound === 1) {
+            bot.selectedAbilityType = 'steal_cash';
+            bot.selectedAbilityTarget = randomTarget;
+          } else {
+            bot.selectedAbilityType = 'shoot';
+            bot.selectedAbilityTarget = randomTarget;
+          }
+          break;
+        case 'thief':
+          bot.selectedAbilityType = g.currentRound === 1 ? 'steal_cash' : 'rob';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        case 'sheriff':
+          if (g.currentRound === 1) {
+            bot.selectedAbilityType = 'investigate';
+            bot.selectedAbilityTarget = randomTarget;
+          } else {
+            bot.selectedAbilityType = Math.random() < 0.5 ? 'investigate' : 'shoot';
+            bot.selectedAbilityTarget = randomTarget;
+          }
+          break;
+        case 'soldier':
+          bot.selectedAbilityType = 'shield';
+          bot.selectedAbilityTarget = Math.random() < 0.5 ? bot.id : randomTarget;
+          break;
+        case 'doctor': {
+          const wounded = living.find((p) => p.health === 'wounded');
+          const dead = Object.values(g.players).find((p) => p.health === 'dead');
+          if (dead && bot.medpacks >= 2) {
+            bot.selectedAbilityType = 'revive';
+            bot.selectedAbilityTarget = dead.id;
+          } else if (wounded && bot.medpacks >= 1) {
+            bot.selectedAbilityType = 'heal_one';
+            bot.selectedAbilityTarget = wounded.id;
+          } else {
+            bot.selectedAbilityType = 'heal_one';
+            bot.selectedAbilityTarget = bot.id;
+          }
+          break;
+        }
+        case 'joker':
+          bot.selectedAbilityType = 'swap';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        case 'wizard':
+          bot.selectedAbilityType = Math.random() < 0.5 ? 'kill' : 'revive';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+      }
+    }
+  }
+
   // ------------------------------------------------------------------
   // Tick (called every second)
   // ------------------------------------------------------------------
@@ -534,13 +626,31 @@ export class MastermindEngine {
 
     // minigame → shop
     if (g.phase === 'minigame' && g.timer <= 0) {
+      // Auto-assign scores for bots or missing entries
+      for (const p of Object.values(g.players)) {
+        if (p.health !== 'dead' && p.minigameScore === undefined) {
+          p.minigameScore = Math.floor(45 + Math.random() * 50);
+        }
+      }
       g.phase = 'shop';
-      g.timer = 35;
+      g.timer = 30;
       return { phaseChanged: true };
     }
 
     // shop → night_ability
     if (g.phase === 'shop' && g.timer <= 0) {
+      // Bots buy items if they have spare cash
+      for (const p of Object.values(g.players)) {
+        if (p.id.startsWith('bot_') && p.health !== 'dead' && p.inventory.length < 3 && p.cash >= 50) {
+          const buyable: MastermindItem[] = ['vest', 'adrenaline', 'wiretap', 'smoke'];
+          const chosen = buyable[Math.floor(Math.random() * buyable.length)];
+          const cost = ITEM_COSTS[chosen] ?? 50;
+          if (p.cash >= cost) {
+            p.cash -= cost;
+            p.inventory.push(chosen);
+          }
+        }
+      }
       g.phase = 'night_ability';
       g.timer = roomState.settings.mastermindAbilityTime ?? 20;
       return { phaseChanged: true };
@@ -548,6 +658,7 @@ export class MastermindEngine {
 
     // night_ability → morning_news (after resolving)
     if (g.phase === 'night_ability' && g.timer <= 0) {
+      MastermindEngine.autoAssignBotAbilities(g);
       MastermindEngine.resolveNight(roomState);
       MastermindEngine.checkWinCondition(roomState);
       if ((g.phase as string) === 'game_over') return { phaseChanged: true };
@@ -560,12 +671,26 @@ export class MastermindEngine {
     if (g.phase === 'morning_news' && g.timer <= 0) {
       g.phase = 'deliberation_vote';
       g.votes = {};
-      g.timer = 45;
+      g.timer = 40;
       return { phaseChanged: true };
     }
 
     // deliberation_vote → next round (or game over)
     if (g.phase === 'deliberation_vote' && g.timer <= 0) {
+      // Auto-fill missing votes
+      const living = Object.values(g.players).filter((p) => p.health !== 'dead');
+      for (const p of living) {
+        if (!g.votes[p.id]) {
+          if (p.id.startsWith('bot_')) {
+            const targets = living.filter(lp => lp.id !== p.id).map(lp => lp.id);
+            g.votes[p.id] = targets.length > 0 && Math.random() < 0.7 
+              ? targets[Math.floor(Math.random() * targets.length)]
+              : 'skip';
+          } else {
+            g.votes[p.id] = 'skip';
+          }
+        }
+      }
       MastermindEngine.resolveVote(roomState);
       if ((g.phase as string) === 'game_over') return { phaseChanged: true };
       // Start next round
