@@ -236,41 +236,145 @@ export interface QuizGameState {
   answerSummary?: Record<string, { answer: string; isCorrect: boolean; points: number }>; // reveal phase breakdown
 }
 
-// --- 7. Mastermind Protocol (The Devil's Plan Strategy Game) ---
-export type MastermindRole = 'killer' | 'sheriff' | 'soldier' | 'doctor' | 'thief' | 'joker' | 'wizard' | 'hacker' | 'hitman' | 'judge';
-export type MastermindHealth = 'healthy' | 'wounded' | 'dead';
-export type MastermindItem = 'vest' | 'wiretap' | 'smoke' | 'adrenaline' | 'ammo';
+// --- 7. Mastermind Protocol (Oakhaven Shelter Strategy Game) ---
+export type MastermindRole =
+  | 'sheriff'
+  | 'killer'
+  | 'doctor'
+  | 'thief'
+  | 'soldier'
+  | 'joker'
+  | 'wizard'
+  | 'hacker';
+
+export type MastermindHealth = 'healthy' | 'wounded' | 'critical' | 'dead';
+
+export type MastermindMiniGameId = 'power_split' | 'cyber_cipher' | 'leverage_pool';
+
+export type MastermindItem =
+  // Base & Junk Components
+  | 'chemical_solvent'
+  | 'battery'
+  | 'micro_cipher'
+  | 'volatile_powder'
+  | 'steel_frame'
+  | 'bio_sample'
+  | 'scrap_metal'
+  | 'duct_tape'
+  | 'flashlight'
+  | 'discarded_key'
+  | 'chemical_residue'
+  | 'glass_wire'
+  // Tier 1 Tactical Gear
+  | 'optical_scanner'
+  | 'corrosive_lockpick'
+  | 'improvised_kevlar'
+  | 'tripwire_mine'
+  | 'chloroform_rag'
+  | 'false_evidence_jar'
+  | 'blinding_strobe'
+  | 'door_jammer'
+  | 'electrified_plate'
+  | 'sealed_containment'
+  // Tier 2 Assets
+  | 'laser_wiretap'
+  | 'shrapnel_device'
+  | 'fortified_doorway'
+  | 'half_antidote'
+  | 'half_detonator'
+  | 'master_lockpick'
+  | 'emp_grid'
+  | 'delayed_toxin'
+  // Tier 3 Apex Products
+  | 'core_detonation_rig'
+  | 'universal_panacea'
+  | 'border_aegis_shield'
+  | 'master_vault_dissolver'
+  | 'police_lockdown_grid'
+  // Legacy compatibility
+  | 'vest'
+  | 'wiretap'
+  | 'smoke'
+  | 'adrenaline'
+  | 'ammo';
 
 export interface MastermindPlayerInfo {
   id: string;
-  name: string;
+  name: string; // Anonymous alias (e.g., Operative-01, Agent-Cyan)
+  avatar: string; // Anonymous colored avatar symbol
+  color: string; // Hex color for anonymous identification on map/table
   role: MastermindRole;
   team: 'syndicate' | 'town' | 'neutral';
   health: MastermindHealth;
-  cash: number;
-  medpacks: number;
-  shields: number;
+  coins: number;
+  unlockedNormalAbilities: boolean; // Claimed free ability cards in round 1
+  isLockedOut?: boolean; // Sheriff Lockout Arrest
+  wonAuctionLastRound?: boolean; // Wealth Tax (+20% cost)
   inventory: MastermindItem[];
-  bleedRoundsLeft?: number;
+  sectorId: string; // Current room on map
   isShieldedThisRound?: boolean;
   wasInvestigated?: boolean;
   investigationResult?: 'Innocent' | 'Suspicious';
-  selectedAbilityTarget?: string;
   selectedAbilityType?: string;
+  selectedAbilityTarget?: string;
   minigameScore?: number;
+  powerPoolMW?: number; // For Power Split mini-game (starts at 100)
+  decadeLockouts?: number[]; // For 80% Leverage Pool (burned brackets, e.g. 7 for 70-79)
   mvpPoints: number;
+  cash: number; // legacy alias for coins
+  medpacks: number;
+  shields: number;
+}
+
+export interface AuctionSlot {
+  id: string;
+  item: MastermindItem;
+  name: string;
+  type: 'component' | 'tier1' | 'tier2';
+  basePrice: number;
+  highestBid?: number;
+  highestBidderId?: string;
+}
+
+export interface MastermindNewsEvent {
+  id: string;
+  headline: string;
+  detail: string;
+  sectorId?: string;
+  icon: string;
+  severity: 'info' | 'warning' | 'danger' | 'critical';
 }
 
 export interface MastermindGameState {
-  phase: 'role_reveal' | 'minigame' | 'shop' | 'night_ability' | 'morning_news' | 'deliberation_vote' | 'game_over';
+  phase:
+    | 'role_reveal'
+    | 'minigame'
+    | 'round_table_meeting'
+    | 'shop_and_craft'
+    | 'news_gazette'
+    | 'game_over'
+    // Legacy compatibility aliases
+    | 'shop'
+    | 'night_ability'
+    | 'morning_news'
+    | 'deliberation_vote';
   currentRound: number;
   totalRounds: number;
   timer: number;
+  currentMiniGame: MastermindMiniGameId;
   players: Record<string, MastermindPlayerInfo>;
+  auctionSlots: AuctionSlot[];
+  auctionBids: Record<string, { slotId: string; bidAmount: number }>; // playerId -> bid
+  newsSlides: MastermindNewsEvent[];
+  vaultBreaches: Record<string, boolean>; // v1, v2, v3, v4
+  domeFortified: boolean;
+  panaceaProgress: number; // 0 - 100
+  detonationArmed: boolean;
   nightNews: string[];
-  votes: Record<string, string>; // voterId -> suspectId
+  votes: Record<string, string>;
   jailedPlayerId?: string;
   winner?: 'town' | 'syndicate' | 'joker' | 'wizard';
+  winnerReason?: string;
   mvpPlayerId?: string;
   minigameTargetScore?: number;
 }
@@ -329,9 +433,14 @@ export type ClientMessage =
   // Quiz KBC
   | { type: 'QUIZ_LOCK_ANSWER'; answer: string; isDouble?: boolean }
   | { type: 'QUIZ_USE_LIFELINE'; lifeline: QuizLifeline }
-  // Mastermind Protocol
+  // Mastermind Protocol (Oakhaven Shelter)
   | { type: 'MASTERMIND_SUBMIT_MINIGAME_SCORE'; score: number }
   | { type: 'MASTERMIND_BUY_ITEM'; item: MastermindItem }
+  | { type: 'MASTERMIND_BID_AUCTION'; slotId: string; bidAmount: number }
+  | { type: 'MASTERMIND_CLAIM_FREE_CARDS' }
+  | { type: 'MASTERMIND_CRAFT_ITEM'; resultItem: MastermindItem }
+  | { type: 'MASTERMIND_TABLE_ACTION'; action: 'point' | 'laser' | 'emote'; targetId?: string }
+  | { type: 'MASTERMIND_MOVE_SECTOR'; sectorId: string }
   | { type: 'MASTERMIND_USE_ABILITY'; abilityType: string; targetId?: string }
   | { type: 'MASTERMIND_VOTE_SUSPECT'; suspectId: string }
   | { type: 'MASTERMIND_NEXT_PHASE' };

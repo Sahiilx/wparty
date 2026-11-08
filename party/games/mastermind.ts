@@ -4,32 +4,63 @@ import {
   MastermindPlayerInfo,
   MastermindRole,
   MastermindItem,
+  AuctionSlot,
+  MastermindNewsEvent,
+  MastermindMiniGameId,
 } from '../types';
 
 // ------------------------------------------------------------------
-// Role assignment tables
+// Role Sequence (Ordered strictly as requested by User)
+// 1. Sheriff, 2. Killer, 3. Doctor, 4. Thief, 5. Soldier,
+// 6. Joker (+1 at 6), 7. Wizard (+1 at 7), 8. Hacker (+1 at 8)
 // ------------------------------------------------------------------
-// Team "syndicate" = bad guys, "town" = good guys, "neutral" = wildcard
-const ROLE_POOL: Array<{ role: MastermindRole; team: 'syndicate' | 'town' | 'neutral' }> = [
-  { role: 'killer',   team: 'syndicate' },
-  { role: 'thief',    team: 'syndicate' },
-  { role: 'sheriff',  team: 'town' },
-  { role: 'soldier',  team: 'town' },
-  { role: 'doctor',   team: 'town' },
-  { role: 'joker',    team: 'neutral' },   // +1 at 6 players
-  { role: 'wizard',   team: 'neutral' },   // +1 at 7 players
-  { role: 'hacker',   team: 'syndicate' }, // +1 at 8 players (intercept ability)
-  { role: 'hitman',   team: 'syndicate' }, // +1 at 9 players (hired killer)
-  { role: 'judge',    team: 'town' },      // +1 at 10 players (can jail)
+const ROLE_SEQUENCE: Array<{ role: MastermindRole; team: 'syndicate' | 'town' | 'neutral' }> = [
+  { role: 'sheriff', team: 'town' },
+  { role: 'killer',  team: 'syndicate' },
+  { role: 'doctor',  team: 'town' },
+  { role: 'thief',   team: 'syndicate' },
+  { role: 'soldier', team: 'town' },
+  { role: 'joker',   team: 'neutral' },   // 6th player
+  { role: 'wizard',  team: 'neutral' },   // 7th player
+  { role: 'hacker',  team: 'syndicate' }, // 8th player
 ];
 
-const ITEM_COSTS: Record<MastermindItem, number> = {
-  vest: 50,
-  wiretap: 80,
-  smoke: 40,
-  adrenaline: 60,
-  ammo: 70,
-};
+const ANONYMOUS_AVATARS = [
+  { avatar: '🔷', color: '#38bdf8' },
+  { avatar: '🔴', color: '#f43f5e' },
+  { avatar: '🟢', color: '#10b981' },
+  { avatar: '🟣', color: '#a855f7' },
+  { avatar: '🟡', color: '#eab308' },
+  { avatar: '🟠', color: '#f97316' },
+  { avatar: '⚪', color: '#e2e8f0' },
+  { avatar: '🟤', color: '#a16207' },
+];
+
+const AUCTION_CATALOG: Array<{ item: MastermindItem; name: string; type: 'component' | 'tier1' | 'tier2'; basePrice: number }> = [
+  // Raw Components
+  { item: 'chemical_solvent', name: 'Chemical Solvent', type: 'component', basePrice: 12 },
+  { item: 'battery', name: 'High-Voltage Battery', type: 'component', basePrice: 15 },
+  { item: 'micro_cipher', name: 'Micro-Cipher Chip', type: 'component', basePrice: 15 },
+  { item: 'volatile_powder', name: 'Volatile Powder', type: 'component', basePrice: 14 },
+  { item: 'steel_frame', name: 'Reinforced Steel Frame', type: 'component', basePrice: 15 },
+  { item: 'bio_sample', name: 'Bio-Sample Vial', type: 'component', basePrice: 14 },
+  { item: 'scrap_metal', name: 'Scrap Metal Plate', type: 'component', basePrice: 10 },
+  { item: 'duct_tape', name: 'Duct Tape & Rags', type: 'component', basePrice: 10 },
+  { item: 'flashlight', name: 'Pocket Flashlight', type: 'component', basePrice: 10 },
+  { item: 'discarded_key', name: 'Discarded Key', type: 'component', basePrice: 12 },
+  { item: 'chemical_residue', name: 'Chemical Residue', type: 'component', basePrice: 10 },
+  { item: 'glass_wire', name: 'Glass Jar & Wire', type: 'component', basePrice: 10 },
+  // Tier 1 Tactical
+  { item: 'optical_scanner', name: 'Optical Scanner', type: 'tier1', basePrice: 35 },
+  { item: 'corrosive_lockpick', name: 'Corrosive Lockpick', type: 'tier1', basePrice: 35 },
+  { item: 'improvised_kevlar', name: 'Improvised Kevlar', type: 'tier1', basePrice: 35 },
+  { item: 'tripwire_mine', name: 'Tripwire Mine', type: 'tier1', basePrice: 35 },
+  // Tier 2 High-Value
+  { item: 'laser_wiretap', name: 'Laser Wiretap', type: 'tier2', basePrice: 65 },
+  { item: 'half_antidote', name: 'Half-Made Antidote', type: 'tier2', basePrice: 65 },
+  { item: 'half_detonator', name: 'Half-Made Detonator', type: 'tier2', basePrice: 65 },
+  { item: 'master_lockpick', name: 'Master Lockpick', type: 'tier2', basePrice: 65 },
+];
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -40,27 +71,22 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// Mini-game: everyone submits a score via MASTERMIND_SUBMIT_MINIGAME_SCORE.
-// The server computes cash = (score / targetScore) * baseCash clamped to [10,200].
-const BASE_CASH = 150;
-const TARGET_SCORE = 100;
-
 export class MastermindEngine {
   // ------------------------------------------------------------------
-  // Init
+  // Init Game
   // ------------------------------------------------------------------
   static initGame(roomState: RoomState): void {
     const playerIds = Object.keys(roomState.players).filter(
       (id) => roomState.players[id].isConnected
     );
 
-    // Auto-fill missing slots with AI Bots so any number of players (even 1 player solo) can play and test!
+    // Auto-fill missing slots with AI bots so even 1 player solo can test
     const BOT_PRESETS = [
-      { name: 'Agent Alpha (Bot)', avatar: '🤖' },
-      { name: 'Agent Beta (Bot)', avatar: '🕵️' },
-      { name: 'Agent Gamma (Bot)', avatar: '🦾' },
-      { name: 'Agent Delta (Bot)', avatar: '⚡' },
-      { name: 'Agent Epsilon (Bot)', avatar: '💻' },
+      { name: 'Operative-Alpha (Bot)', avatar: '🤖' },
+      { name: 'Operative-Beta (Bot)', avatar: '🕵️' },
+      { name: 'Operative-Gamma (Bot)', avatar: '🦾' },
+      { name: 'Operative-Delta (Bot)', avatar: '⚡' },
+      { name: 'Operative-Epsilon (Bot)', avatar: '💻' },
     ];
 
     let botIdx = 0;
@@ -82,9 +108,8 @@ export class MastermindEngine {
 
     if (playerIds.length < 5) return;
 
-    // Assign roles based on player count
     const numPlayers = playerIds.length;
-    const rolesToUse = ROLE_POOL.slice(0, Math.min(numPlayers, ROLE_POOL.length));
+    const rolesToUse = ROLE_SEQUENCE.slice(0, Math.min(numPlayers, ROLE_SEQUENCE.length));
     const shuffledRoles = shuffle(rolesToUse);
     const shuffledPlayerIds = shuffle([...playerIds]);
 
@@ -92,69 +117,97 @@ export class MastermindEngine {
     for (let i = 0; i < shuffledPlayerIds.length; i++) {
       const pid = shuffledPlayerIds[i];
       const roleEntry = shuffledRoles[i % shuffledRoles.length];
+      const av = ANONYMOUS_AVATARS[i % ANONYMOUS_AVATARS.length];
+
       mastermindPlayers[pid] = {
         id: pid,
-        name: roomState.players[pid].name,
+        name: `Operative-${String(i + 1).padStart(2, '0')}`,
+        avatar: av.avatar,
+        color: av.color,
         role: roleEntry.role,
         team: roleEntry.team,
         health: 'healthy',
-        cash: 30, // starter cash
-        medpacks: 0,
-        shields: 0,
-        inventory: [],
-        bleedRoundsLeft: 0,
-        isShieldedThisRound: false,
-        wasInvestigated: false,
-        selectedAbilityTarget: undefined,
-        selectedAbilityType: undefined,
-        minigameScore: undefined,
+        coins: 50,
+        cash: 50,
+        unlockedNormalAbilities: false, // Claimable in Round 1
+        wonAuctionLastRound: false,
+        inventory: ['scrap_metal'], // Starter raw component
+        sectorId: 'lockdown_dome',
+        powerPoolMW: 100,
+        decadeLockouts: [],
         mvpPoints: 0,
+        medpacks: roleEntry.role === 'doctor' ? 1 : 0,
+        shields: roleEntry.role === 'soldier' ? 1 : 0,
       };
     }
-
-    // Give starting abilities
-    MastermindEngine.grantRoundAbilities(mastermindPlayers, 1);
 
     roomState.mastermindState = {
       phase: 'role_reveal',
       currentRound: 1,
       totalRounds: roomState.settings.totalRounds || 5,
-      timer: 12,
+      timer: 10,
+      currentMiniGame: 'power_split',
       players: mastermindPlayers,
+      auctionSlots: MastermindEngine.generateAuctionSlots(1),
+      auctionBids: {},
+      newsSlides: [
+        {
+          id: 'welcome',
+          headline: 'Oakhaven Protocol Initialized',
+          detail: 'Operatives dispatched to containment sectors. All external radio channels scrambled.',
+          icon: '🚨',
+          severity: 'info',
+        },
+      ],
+      vaultBreaches: { vault_1: false, vault_2: false, vault_3: false, vault_4: false },
+      domeFortified: false,
+      panaceaProgress: 0,
+      detonationArmed: false,
       nightNews: [],
       votes: {},
     };
+
     roomState.status = 'playing';
   }
 
   // ------------------------------------------------------------------
-  // Grant abilities based on current round
+  // Auction Slot Generation (1 High-Value Slot, 2-3 Components)
   // ------------------------------------------------------------------
-  private static grantRoundAbilities(
-    players: Record<string, MastermindPlayerInfo>,
-    round: number
-  ): void {
-    for (const pid of Object.keys(players)) {
-      const p = players[pid];
-      p.selectedAbilityTarget = undefined;
-      p.selectedAbilityType = undefined;
-      p.isShieldedThisRound = false;
+  private static generateAuctionSlots(round: number): AuctionSlot[] {
+    const highTier = AUCTION_CATALOG.filter((i) => i.type === 'tier2');
+    const lowTier = AUCTION_CATALOG.filter((i) => i.type === 'component' || i.type === 'tier1');
 
-      if (round === 1) {
-        // Round 1: setup powers (no lethal abilities yet)
-        if (p.role === 'doctor') p.medpacks = Math.min(p.medpacks + 1, 2);
-        if (p.role === 'soldier') p.shields = Math.min(p.shields + 1, 2);
-      } else {
-        // Round 2+: full arsenal
-        if (p.role === 'doctor') p.medpacks = Math.min(p.medpacks + 1, 2);
-        if (p.role === 'soldier') p.shields = Math.min(p.shields + 1, 2);
-        // Killer, Sheriff, Thief, Joker, Wizard, Hacker abilities are used via MASTERMIND_USE_ABILITY
-      }
-    }
+    const chosenHigh = highTier[Math.floor(Math.random() * highTier.length)];
+    const chosenLow1 = lowTier[Math.floor(Math.random() * lowTier.length)];
+    const chosenLow2 = lowTier[Math.floor(Math.random() * lowTier.length)];
+
+    return [
+      {
+        id: `slot_high_${round}`,
+        item: chosenHigh.item,
+        name: chosenHigh.name,
+        type: chosenHigh.type,
+        basePrice: chosenHigh.basePrice,
+      },
+      {
+        id: `slot_low1_${round}`,
+        item: chosenLow1.item,
+        name: chosenLow1.name,
+        type: chosenLow1.type,
+        basePrice: chosenLow1.basePrice,
+      },
+      {
+        id: `slot_low2_${round}`,
+        item: chosenLow2.item,
+        name: chosenLow2.name,
+        type: chosenLow2.type,
+        basePrice: chosenLow2.basePrice,
+      },
+    ];
   }
 
   // ------------------------------------------------------------------
-  // Message handlers
+  // Client Message Handlers
   // ------------------------------------------------------------------
   static submitMinigameScore(roomState: RoomState, playerId: string, score: number): boolean {
     const g = roomState.mastermindState;
@@ -166,18 +219,50 @@ export class MastermindEngine {
     return true;
   }
 
-  static buyItem(roomState: RoomState, playerId: string, item: MastermindItem): boolean {
+  static claimFreeCards(roomState: RoomState, playerId: string): boolean {
     const g = roomState.mastermindState;
-    if (!g || g.phase !== 'shop') return false;
+    if (!g) return false;
     const p = g.players[playerId];
     if (!p) return false;
 
-    const cost = ITEM_COSTS[item] ?? 50;
-    if (p.cash < cost) return false;
-    if (p.inventory.length >= 3) return false; // Max 3 items
+    p.unlockedNormalAbilities = true;
+    return true;
+  }
 
-    p.cash -= cost;
-    p.inventory.push(item);
+  static bidAuction(roomState: RoomState, playerId: string, slotId: string, bidAmount: number): boolean {
+    const g = roomState.mastermindState;
+    if (!g || g.phase !== 'shop_and_craft') return false;
+    const p = g.players[playerId];
+    if (!p) return false;
+
+    const multiplier = p.wonAuctionLastRound ? 1.2 : 1.0;
+    const effectiveCost = Math.round(bidAmount * multiplier);
+    if (p.coins < effectiveCost) return false;
+
+    g.auctionBids[playerId] = { slotId, bidAmount: effectiveCost };
+    return true;
+  }
+
+  static craftItem(roomState: RoomState, playerId: string, resultItem: MastermindItem): boolean {
+    const g = roomState.mastermindState;
+    if (!g) return false;
+    const p = g.players[playerId];
+    if (!p) return false;
+
+    p.inventory.push(resultItem);
+    return true;
+  }
+
+  // Legacy compat alias (from party/index.ts)
+  static buyItem(roomState: RoomState, playerId: string, item: MastermindItem): boolean {
+    return MastermindEngine.craftItem(roomState, playerId, item);
+  }
+
+  // Legacy compat alias - vote tracking for round table
+  static vote(roomState: RoomState, playerId: string, suspectId: string): boolean {
+    const g = roomState.mastermindState;
+    if (!g) return false;
+    g.votes[playerId] = suspectId;
     return true;
   }
 
@@ -188,428 +273,17 @@ export class MastermindEngine {
     targetId?: string
   ): boolean {
     const g = roomState.mastermindState;
-    if (!g || g.phase !== 'night_ability') return false;
+    if (!g || g.phase !== 'round_table_meeting') return false;
     const p = g.players[playerId];
-    if (!p || p.health === 'dead') return false;
+    if (!p || p.health === 'dead' || p.isLockedOut) return false;
 
     p.selectedAbilityType = abilityType;
     p.selectedAbilityTarget = targetId;
     return true;
   }
 
-  static vote(roomState: RoomState, playerId: string, suspectId: string): boolean {
-    const g = roomState.mastermindState;
-    if (!g || g.phase !== 'deliberation_vote') return false;
-    if (!g.players[suspectId] && suspectId !== 'skip') return false;
-
-    g.votes[playerId] = suspectId;
-
-    // Check if all living players voted
-    const livingIds = Object.keys(g.players).filter((id) => g.players[id].health !== 'dead');
-    if (livingIds.every((id) => g.votes[id] !== undefined)) {
-      MastermindEngine.resolveVote(roomState);
-    }
-    return true;
-  }
-
   // ------------------------------------------------------------------
-  // Night resolution
-  // ------------------------------------------------------------------
-  private static resolveNight(roomState: RoomState): void {
-    const g = roomState.mastermindState;
-    if (!g) return;
-
-    const news: string[] = [];
-    const players = g.players;
-
-    // Collect all wound/kill actions
-    const woundTargets: Record<string, string[]> = {}; // targetId -> [shooterIds]
-    const stolenFrom: Record<string, { byId: string; amount: number }[]> = {};
-    let investigatedId: string | undefined;
-    let investigatorId: string | undefined;
-    let hackedAbilityId: string | undefined;
-    let jailedId: string | undefined;
-
-    // Collect ability selections
-    for (const pid of Object.keys(players)) {
-      const p = players[pid];
-      if (!p.selectedAbilityType) continue;
-      const tId = p.selectedAbilityTarget;
-
-      switch (p.role) {
-        case 'killer':
-          if (p.selectedAbilityType === 'shoot' && tId && players[tId]) {
-            if (!woundTargets[tId]) woundTargets[tId] = [];
-            woundTargets[tId].push(pid);
-          } else if (p.selectedAbilityType === 'steal_cash' && tId && players[tId]) {
-            const amt = Math.floor(players[tId].cash * 0.3);
-            if (!stolenFrom[tId]) stolenFrom[tId] = [];
-            stolenFrom[tId].push({ byId: pid, amount: amt });
-          }
-          break;
-        case 'thief':
-          if ((p.selectedAbilityType === 'steal_cash' || p.selectedAbilityType === 'rob') && tId && players[tId]) {
-            const amt = p.selectedAbilityType === 'rob'
-              ? players[tId].cash
-              : Math.floor(players[tId].cash * 0.4);
-            if (!stolenFrom[tId]) stolenFrom[tId] = [];
-            stolenFrom[tId].push({ byId: pid, amount: amt });
-          }
-          break;
-        case 'sheriff':
-          if (p.selectedAbilityType === 'investigate' && tId) {
-            investigatedId = tId;
-            investigatorId = pid;
-          } else if (p.selectedAbilityType === 'shoot' && tId && players[tId]) {
-            if (!woundTargets[tId]) woundTargets[tId] = [];
-            woundTargets[tId].push(pid);
-          }
-          break;
-        case 'soldier':
-          if (p.selectedAbilityType === 'shield' && tId && players[tId]) {
-            players[tId].isShieldedThisRound = true;
-          }
-          break;
-        case 'doctor':
-          if (p.selectedAbilityType === 'heal_one' && tId && players[tId]) {
-            const target = players[tId];
-            if (target.health === 'wounded' && p.medpacks >= 1) {
-              p.medpacks -= 1;
-              target.bleedRoundsLeft = 1; // healed for 1 round
-              news.push(`💉 A medpack was used to stabilize someone.`);
-            }
-          } else if (p.selectedAbilityType === 'revive' && tId && players[tId]) {
-            const target = players[tId];
-            if (target.health === 'dead' && p.medpacks >= 2) {
-              p.medpacks -= 2;
-              target.health = 'healthy';
-              target.bleedRoundsLeft = 0;
-              news.push(`✨ Someone was revived from the dead!`);
-            }
-          }
-          break;
-        case 'hacker':
-          if (p.selectedAbilityType === 'intercept' && tId) {
-            hackedAbilityId = tId; // This player's night action is nullified
-          }
-          break;
-        case 'wizard':
-          if (p.selectedAbilityType === 'revive' && tId && players[tId]) {
-            const target = players[tId];
-            if (target.health === 'dead') {
-              target.health = 'healthy';
-              target.bleedRoundsLeft = 0;
-              news.push(`🔮 A wizard has resurrected someone!`);
-            }
-          } else if (p.selectedAbilityType === 'kill' && tId && players[tId]) {
-            if (!woundTargets[tId]) woundTargets[tId] = [];
-            woundTargets[tId].push(pid);
-            woundTargets[tId].push(pid); // wizard kill = double wound = instant death
-          }
-          break;
-        case 'judge':
-          if (p.selectedAbilityType === 'jail' && tId) {
-            jailedId = tId;
-          }
-          break;
-        case 'joker':
-          // Joker's swap ability handled at kill-check time below
-          break;
-      }
-    }
-
-    // Apply hacker (null one person's action)
-    if (hackedAbilityId && players[hackedAbilityId]) {
-      players[hackedAbilityId].selectedAbilityType = undefined;
-      players[hackedAbilityId].selectedAbilityTarget = undefined;
-      news.push(`💻 The Hacker intercepted someone's night ability!`);
-    }
-
-    // Apply jail (jailed player's ability is nullified)
-    if (jailedId) {
-      g.jailedPlayerId = jailedId;
-      if (players[jailedId]) {
-        players[jailedId].selectedAbilityType = undefined;
-        news.push(`⚖️ The Judge has jailed a suspect for the night!`);
-      }
-    }
-
-    // Apply steals
-    for (const [targetId, thefts] of Object.entries(stolenFrom)) {
-      const t = players[targetId];
-      if (!t) continue;
-      let totalStolen = 0;
-      for (const { byId, amount } of thefts) {
-        const actualAmt = Math.min(amount, t.cash - totalStolen);
-        if (actualAmt > 0) {
-          players[byId].cash += actualAmt;
-          totalStolen += actualAmt;
-        }
-      }
-      if (totalStolen > 0) {
-        t.cash = Math.max(0, t.cash - totalStolen);
-        news.push(`💰 Someone was robbed of \$${totalStolen} in the night!`);
-      }
-    }
-
-    // Apply wounds/kills
-    for (const [targetId, shooters] of Object.entries(woundTargets)) {
-      const t = players[targetId];
-      if (!t || t.health === 'dead') continue;
-
-      // Shield blocks one hit
-      if (t.isShieldedThisRound) {
-        news.push(`🛡️ Someone's shield blocked the attack!`);
-        t.isShieldedThisRound = false;
-
-        // Vest (inventory) blocks additional hit
-        const vestIdx = t.inventory.indexOf('vest');
-        if (vestIdx !== -1 && shooters.length > 1) {
-          t.inventory.splice(vestIdx, 1);
-          news.push(`🦺 A bulletproof vest absorbed an extra shot!`);
-        }
-        continue;
-      }
-
-      // Vest blocks first hit
-      const vestIdx = t.inventory.indexOf('vest');
-      if (vestIdx !== -1) {
-        t.inventory.splice(vestIdx, 1);
-        news.push(`🦺 A bulletproof vest saved someone from getting hurt!`);
-        continue;
-      }
-
-      const numShots = shooters.length;
-      if (numShots >= 2) {
-        // Joker swap: if joker is targeted with lethal shots, check joker power
-        if (t.role === 'joker') {
-          const jokerAbility = t.selectedAbilityType;
-          if (jokerAbility === 'swap') {
-            const swapTargetId = t.selectedAbilityTarget;
-            if (swapTargetId && players[swapTargetId]) {
-              // Joker swaps place — if killed by bad guys, joker wins (and survives)
-              const isKilledByBadGuy = shooters.some(s => players[s]?.team === 'syndicate');
-              if (isKilledByBadGuy) {
-                news.push(`🃏 The Joker performed a daring swap and survived!`);
-                // Apply death to the swapped person instead
-                players[swapTargetId].health = 'wounded';
-                news.push(`💀 The Joker's swap target took the hit!`);
-              } else {
-                // Killed by town → joker dies
-                t.health = 'dead';
-                news.push(`🃏 The Joker gambled and lost...`);
-              }
-            } else {
-              t.health = 'dead';
-              news.push(`💀 A player was eliminated tonight!`);
-            }
-          } else {
-            t.health = 'dead';
-            news.push(`💀 A player was eliminated tonight!`);
-          }
-        } else {
-          // Normal player: 2+ shots = dead
-          if (t.health === 'wounded') {
-            t.health = 'dead';
-            news.push(`💀 A wounded player was finished off!`);
-          } else {
-            t.health = 'dead';
-            news.push(`💀 A player was eliminated tonight!`);
-          }
-        }
-      } else {
-        // 1 shot = wounded
-        if (t.health === 'healthy') {
-          t.health = 'wounded';
-          t.bleedRoundsLeft = 2;
-          news.push(`🩸 Someone was wounded but clings to life...`);
-        } else if (t.health === 'wounded') {
-          // Already wounded: second shot kills
-          t.health = 'dead';
-          news.push(`💀 A wounded player succumbed to their injuries!`);
-        }
-      }
-    }
-
-    // Investigate result (revealed only to sheriff)
-    if (investigatedId && investigatorId && players[investigatedId]) {
-      const suspect = players[investigatedId];
-      suspect.wasInvestigated = true;
-      suspect.investigationResult = suspect.team === 'syndicate' ? 'Suspicious' : 'Innocent';
-      // Sheriff's private info — news item is generic
-      news.push(`🔍 The Sheriff investigated someone last night.`);
-    }
-
-    // Award MVP points for minigame
-    MastermindEngine.processMiniGameResults(g);
-
-    g.nightNews = news;
-    g.votes = {};
-    g.jailedPlayerId = undefined;
-  }
-
-  private static processMiniGameResults(g: MastermindGameState): void {
-    let topScore = -1;
-    let mvpId: string | undefined;
-
-    for (const [pid, p] of Object.entries(g.players)) {
-      if (p.health === 'dead') continue;
-      const score = p.minigameScore ?? 0;
-      const cashEarned = Math.round(
-        Math.max(10, Math.min(200, (score / TARGET_SCORE) * BASE_CASH))
-      );
-      p.cash += cashEarned;
-      p.mvpPoints += score;
-      p.minigameScore = undefined;
-
-      if (score > topScore) {
-        topScore = score;
-        mvpId = pid;
-      }
-    }
-
-    if (mvpId) {
-      g.mvpPlayerId = mvpId;
-      g.players[mvpId].cash += 30; // MVP bonus cash
-    }
-  }
-
-  private static resolveVote(roomState: RoomState): void {
-    const g = roomState.mastermindState;
-    if (!g) return;
-
-    const tally: Record<string, number> = {};
-    for (const suspectId of Object.values(g.votes)) {
-      if (suspectId !== 'skip') tally[suspectId] = (tally[suspectId] ?? 0) + 1;
-    }
-
-    let maxVotes = 0;
-    let eliminatedId: string | undefined;
-    for (const [id, count] of Object.entries(tally)) {
-      if (count > maxVotes) {
-        maxVotes = count;
-        eliminatedId = id;
-      }
-    }
-
-    if (eliminatedId && g.players[eliminatedId]) {
-      g.players[eliminatedId].health = 'dead';
-    }
-
-    // Check win conditions
-    MastermindEngine.checkWinCondition(roomState);
-    if (roomState.status !== 'game_over') {
-      g.phase = 'morning_news';
-      g.timer = 10;
-    }
-  }
-
-  private static checkWinCondition(roomState: RoomState): void {
-    const g = roomState.mastermindState;
-    if (!g) return;
-
-    const living = Object.values(g.players).filter((p) => p.health !== 'dead');
-    const livingSyndicate = living.filter((p) => p.team === 'syndicate');
-    const livingTown = living.filter((p) => p.team === 'town');
-    const livingJoker = living.filter((p) => p.role === 'joker');
-
-    // Syndicate wins if they equal or outnumber town
-    if (livingSyndicate.length >= livingTown.length && livingSyndicate.length > 0) {
-      g.winner = 'syndicate';
-      g.phase = 'game_over';
-      roomState.status = 'game_over';
-      g.timer = 15;
-    }
-    // Town wins if all syndicate are dead
-    else if (livingSyndicate.length === 0) {
-      g.winner = 'town';
-      g.phase = 'game_over';
-      roomState.status = 'game_over';
-      g.timer = 15;
-    }
-    // Joker wins if only joker is left alive
-    else if (livingJoker.length > 0 && living.length === livingJoker.length) {
-      g.winner = 'joker';
-      g.phase = 'game_over';
-      roomState.status = 'game_over';
-      g.timer = 15;
-    }
-    // Check if total rounds exceeded
-    else if (g.currentRound >= g.totalRounds) {
-      g.winner = livingSyndicate.length > 0 ? 'syndicate' : 'town';
-      g.phase = 'game_over';
-      roomState.status = 'game_over';
-      g.timer = 15;
-    }
-  }
-
-  private static autoAssignBotAbilities(g: MastermindGameState): void {
-    const living = Object.values(g.players).filter((p) => p.health !== 'dead');
-    const allLivingIds = living.map((p) => p.id);
-
-    for (const bot of living.filter((p) => p.id.startsWith('bot_'))) {
-      if (bot.selectedAbilityType) continue; // Already selected
-
-      const potentialTargets = allLivingIds.filter((id) => id !== bot.id);
-      if (potentialTargets.length === 0) continue;
-      const randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-
-      switch (bot.role) {
-        case 'killer':
-          if (g.currentRound === 1) {
-            bot.selectedAbilityType = 'steal_cash';
-            bot.selectedAbilityTarget = randomTarget;
-          } else {
-            bot.selectedAbilityType = 'shoot';
-            bot.selectedAbilityTarget = randomTarget;
-          }
-          break;
-        case 'thief':
-          bot.selectedAbilityType = g.currentRound === 1 ? 'steal_cash' : 'rob';
-          bot.selectedAbilityTarget = randomTarget;
-          break;
-        case 'sheriff':
-          if (g.currentRound === 1) {
-            bot.selectedAbilityType = 'investigate';
-            bot.selectedAbilityTarget = randomTarget;
-          } else {
-            bot.selectedAbilityType = Math.random() < 0.5 ? 'investigate' : 'shoot';
-            bot.selectedAbilityTarget = randomTarget;
-          }
-          break;
-        case 'soldier':
-          bot.selectedAbilityType = 'shield';
-          bot.selectedAbilityTarget = Math.random() < 0.5 ? bot.id : randomTarget;
-          break;
-        case 'doctor': {
-          const wounded = living.find((p) => p.health === 'wounded');
-          const dead = Object.values(g.players).find((p) => p.health === 'dead');
-          if (dead && bot.medpacks >= 2) {
-            bot.selectedAbilityType = 'revive';
-            bot.selectedAbilityTarget = dead.id;
-          } else if (wounded && bot.medpacks >= 1) {
-            bot.selectedAbilityType = 'heal_one';
-            bot.selectedAbilityTarget = wounded.id;
-          } else {
-            bot.selectedAbilityType = 'heal_one';
-            bot.selectedAbilityTarget = bot.id;
-          }
-          break;
-        }
-        case 'joker':
-          bot.selectedAbilityType = 'swap';
-          bot.selectedAbilityTarget = randomTarget;
-          break;
-        case 'wizard':
-          bot.selectedAbilityType = Math.random() < 0.5 ? 'kill' : 'revive';
-          bot.selectedAbilityTarget = randomTarget;
-          break;
-      }
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Tick (called every second)
+  // Tick Loop
   // ------------------------------------------------------------------
   static tick(roomState: RoomState): { phaseChanged: boolean } {
     const g = roomState.mastermindState;
@@ -617,99 +291,315 @@ export class MastermindEngine {
 
     g.timer = Math.max(0, g.timer - 1);
 
-    // role_reveal → minigame
+    // 1. role_reveal -> Phase 1: minigame
     if (g.phase === 'role_reveal' && g.timer <= 0) {
       g.phase = 'minigame';
-      g.timer = roomState.settings.mastermindMiniGameTime ?? 60;
+      g.timer = 50;
       return { phaseChanged: true };
     }
 
-    // minigame → shop
+    // 2. minigame -> Phase 2: round_table_meeting
     if (g.phase === 'minigame' && g.timer <= 0) {
-      // Auto-assign scores for bots or missing entries
-      for (const p of Object.values(g.players)) {
-        if (p.health !== 'dead' && p.minigameScore === undefined) {
-          p.minigameScore = Math.floor(45 + Math.random() * 50);
-        }
-      }
-      g.phase = 'shop';
-      g.timer = 30;
+      MastermindEngine.resolveMinigame(g);
+      g.phase = 'round_table_meeting';
+      g.timer = 25;
       return { phaseChanged: true };
     }
 
-    // shop → night_ability
-    if (g.phase === 'shop' && g.timer <= 0) {
-      // Bots buy items if they have spare cash
-      for (const p of Object.values(g.players)) {
-        if (p.id.startsWith('bot_') && p.health !== 'dead' && p.inventory.length < 3 && p.cash >= 50) {
-          const buyable: MastermindItem[] = ['vest', 'adrenaline', 'wiretap', 'smoke'];
-          const chosen = buyable[Math.floor(Math.random() * buyable.length)];
-          const cost = ITEM_COSTS[chosen] ?? 50;
-          if (p.cash >= cost) {
-            p.cash -= cost;
-            p.inventory.push(chosen);
-          }
-        }
-      }
-      g.phase = 'night_ability';
-      g.timer = roomState.settings.mastermindAbilityTime ?? 20;
-      return { phaseChanged: true };
-    }
-
-    // night_ability → morning_news (after resolving)
-    if (g.phase === 'night_ability' && g.timer <= 0) {
+    // 3. round_table_meeting -> Phase 3: shop_and_craft
+    if (g.phase === 'round_table_meeting' && g.timer <= 0) {
       MastermindEngine.autoAssignBotAbilities(g);
-      MastermindEngine.resolveNight(roomState);
+      MastermindEngine.resolveAbilities(roomState);
+      g.phase = 'shop_and_craft';
+      g.timer = 35;
+      return { phaseChanged: true };
+    }
+
+    // 4. shop_and_craft -> Phase 4: news_gazette
+    if (g.phase === 'shop_and_craft' && g.timer <= 0) {
+      MastermindEngine.resolveAuctionBids(g);
       MastermindEngine.checkWinCondition(roomState);
       if ((g.phase as string) === 'game_over') return { phaseChanged: true };
-      g.phase = 'morning_news';
-      g.timer = 12;
+      g.phase = 'news_gazette';
+      g.timer = 14;
       return { phaseChanged: true };
     }
 
-    // morning_news → deliberation_vote or next round minigame
-    if (g.phase === 'morning_news' && g.timer <= 0) {
-      g.phase = 'deliberation_vote';
-      g.votes = {};
-      g.timer = 40;
-      return { phaseChanged: true };
-    }
-
-    // deliberation_vote → next round (or game over)
-    if (g.phase === 'deliberation_vote' && g.timer <= 0) {
-      // Auto-fill missing votes
-      const living = Object.values(g.players).filter((p) => p.health !== 'dead');
-      for (const p of living) {
-        if (!g.votes[p.id]) {
-          if (p.id.startsWith('bot_')) {
-            const targets = living.filter(lp => lp.id !== p.id).map(lp => lp.id);
-            g.votes[p.id] = targets.length > 0 && Math.random() < 0.7 
-              ? targets[Math.floor(Math.random() * targets.length)]
-              : 'skip';
-          } else {
-            g.votes[p.id] = 'skip';
-          }
-        }
+    // 5. news_gazette -> Next Round Phase 1: minigame (or Game Over)
+    if (g.phase === 'news_gazette' && g.timer <= 0) {
+      if (g.currentRound >= g.totalRounds) {
+        MastermindEngine.checkWinCondition(roomState, true);
+        return { phaseChanged: true };
       }
-      MastermindEngine.resolveVote(roomState);
-      if ((g.phase as string) === 'game_over') return { phaseChanged: true };
-      // Start next round
-      MastermindEngine.startNextRound(roomState);
+
+      MastermindEngine.advanceNextRound(g);
       return { phaseChanged: true };
     }
 
     return { phaseChanged: false };
   }
 
-  private static startNextRound(roomState: RoomState): void {
+  // ------------------------------------------------------------------
+  // Mini-Game Scoring & Coin Distribution
+  // ------------------------------------------------------------------
+  private static resolveMinigame(g: MastermindGameState): void {
+    for (const p of Object.values(g.players)) {
+      if (p.health === 'dead') continue;
+      const score = p.minigameScore ?? Math.floor(40 + Math.random() * 55);
+      const earnedCoins = Math.round(Math.max(20, Math.min(140, (score / 150) * 100)));
+      p.coins += earnedCoins;
+      p.cash = p.coins;
+      p.minigameScore = undefined;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Bot Autonomous Ability Selection
+  // ------------------------------------------------------------------
+  private static autoAssignBotAbilities(g: MastermindGameState): void {
+    const living = Object.values(g.players).filter((p) => p.health !== 'dead');
+    const allLivingIds = living.map((p) => p.id);
+
+    for (const bot of living.filter((p) => p.id.startsWith('bot_'))) {
+      if (bot.selectedAbilityType) continue;
+
+      const otherTargets = allLivingIds.filter((id) => id !== bot.id);
+      if (otherTargets.length === 0) continue;
+      const randomTarget = otherTargets[Math.floor(Math.random() * otherTargets.length)];
+
+      switch (bot.role) {
+        case 'killer':
+          bot.selectedAbilityType = g.currentRound === 1 ? 'steal_half' : 'gun';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        case 'thief':
+          bot.selectedAbilityType = g.currentRound === 1 ? 'pocket_raid' : 'steal_full';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        case 'sheriff':
+          bot.selectedAbilityType = g.currentRound === 1 ? 'investigate' : 'service_pistol';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        case 'soldier':
+          bot.selectedAbilityType = 'shield';
+          bot.selectedAbilityTarget = Math.random() < 0.5 ? bot.id : randomTarget;
+          break;
+        case 'doctor':
+          bot.selectedAbilityType = 'first_aid';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+        default:
+          bot.selectedAbilityType = 'normal1';
+          bot.selectedAbilityTarget = randomTarget;
+          break;
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Ability Resolution (Generates Anonymous Gazette Slideshow Events)
+  // ------------------------------------------------------------------
+  private static resolveAbilities(roomState: RoomState): void {
     const g = roomState.mastermindState;
     if (!g) return;
+
+    const slides: MastermindNewsEvent[] = [];
+    const players = g.players;
+
+    // Defensive & Shields first
+    for (const p of Object.values(players)) {
+      if (p.selectedAbilityType === 'shield' || p.selectedAbilityType === 'normal1' && p.role === 'soldier') {
+        const tId = p.selectedAbilityTarget || p.id;
+        if (players[tId]) {
+          players[tId].isShieldedThisRound = true;
+          slides.push({
+            id: `shield_${Date.now()}_${Math.random()}`,
+            headline: 'Defensive Nanite Barrier Deployed',
+            detail: 'An operative projected a reinforced energy shield over a targeted sector.',
+            icon: '🛡️',
+            severity: 'info',
+          });
+        }
+      }
+    }
+
+    // Offensive Strikes (Service Pistol, Gun, Steal)
+    for (const p of Object.values(players)) {
+      const ability = p.selectedAbilityType;
+      const tId = p.selectedAbilityTarget;
+      if (!ability || !tId || !players[tId]) continue;
+      const target = players[tId];
+
+      if (ability === 'service_pistol' || ability === 'normal2' && p.role === 'sheriff') {
+        if (target.isShieldedThisRound) {
+          target.isShieldedThisRound = false;
+          slides.push({
+            id: `hit_shield_${Math.random()}`,
+            headline: 'Ballistic Discharge Intercepted',
+            detail: 'Gunfire was discharged in the facility corridors, but a defensive shield absorbed the impact!',
+            icon: '🛡️',
+            severity: 'warning',
+          });
+        } else {
+          target.health = target.health === 'healthy' ? 'wounded' : 'critical';
+          slides.push({
+            id: `wound_${Math.random()}`,
+            headline: 'Operative Wounded in Ballistic Incident',
+            detail: 'Forensic telemetry confirms a 9mm round penetrated an operative casing. Target is bleeding.',
+            icon: '🩸',
+            severity: 'danger',
+          });
+        }
+      } else if (ability === 'gun' || ability === 'normal2' && p.role === 'killer') {
+        if (target.isShieldedThisRound) {
+          target.isShieldedThisRound = false;
+          slides.push({
+            id: `killer_shield_${Math.random()}`,
+            headline: 'Hostile Strike Deflected',
+            detail: 'A lethal ambush was neutralized by an active barrier.',
+            icon: '🛡️',
+            severity: 'warning',
+          });
+        } else {
+          target.health = target.health === 'healthy' ? 'wounded' : 'critical';
+          slides.push({
+            id: `killer_wound_${Math.random()}`,
+            headline: 'Covert Aggression Detected',
+            detail: 'An unregistered weapon discharge left forensic shrapnel across the sector floor.',
+            icon: '🩸',
+            severity: 'critical',
+          });
+        }
+      } else if (ability === 'first_aid' || ability === 'normal1' && p.role === 'doctor') {
+        if (target.health === 'wounded') {
+          target.health = 'healthy';
+          slides.push({
+            id: `heal_${Math.random()}`,
+            headline: 'Triage First Aid Administered',
+            detail: 'Medical field dressings stabilized a wounded operative back to operational status.',
+            icon: '🩹',
+            severity: 'info',
+          });
+        }
+      } else if (ability === 'lockout_arrest' || ability === 'ultimate' && p.role === 'sheriff') {
+        target.isLockedOut = true;
+        slides.push({
+          id: `lockout_${Math.random()}`,
+          headline: 'High-Security Detention Enforced',
+          detail: 'An operative was restrained in quarantine; electronic trading & ability channels revoked.',
+          icon: '⛓️',
+          severity: 'warning',
+        });
+      }
+    }
+
+    if (slides.length === 0) {
+      slides.push({
+        id: `silent_${Date.now()}`,
+        headline: 'Silent Shelter Reconnaissance',
+        detail: 'Operatives observed each other at the Round Table. No weapons were fired tonight.',
+        icon: '🤫',
+        severity: 'info',
+      });
+    }
+
+    g.newsSlides = slides;
+  }
+
+  // ------------------------------------------------------------------
+  // Auction Resolution (Single Purchase Limit & Wealth Tax)
+  // ------------------------------------------------------------------
+  private static resolveAuctionBids(g: MastermindGameState): void {
+    // Reset wealth tax flags for everyone initially
+    for (const p of Object.values(g.players)) {
+      p.wonAuctionLastRound = false;
+    }
+
+    // Process highest bid per slot, respecting single-purchase limit
+    const winners: Record<string, boolean> = {}; // playerId -> hasWonItem
+
+    for (const slot of g.auctionSlots) {
+      let highestBid = 0;
+      let highestBidderId: string | undefined;
+
+      for (const [pid, bid] of Object.entries(g.auctionBids)) {
+        if (bid.slotId === slot.id && bid.bidAmount > highestBid && !winners[pid]) {
+          highestBid = bid.bidAmount;
+          highestBidderId = pid;
+        }
+      }
+
+      if (highestBidderId && g.players[highestBidderId]) {
+        const winner = g.players[highestBidderId];
+        winner.coins = Math.max(0, winner.coins - highestBid);
+        winner.cash = winner.coins;
+        winner.inventory.push(slot.item);
+        winner.wonAuctionLastRound = true; // Subject to +20% wealth tax next round
+        winners[highestBidderId] = true;
+      }
+    }
+
+    g.auctionBids = {};
+  }
+
+  // ------------------------------------------------------------------
+  // Advance Next Round
+  // ------------------------------------------------------------------
+  private static advanceNextRound(g: MastermindGameState): void {
     g.currentRound += 1;
-    MastermindEngine.grantRoundAbilities(g.players, g.currentRound);
+    // Rotate mini game: Round 1 -> power_split, Round 2 -> cyber_cipher, Round 3 -> leverage_pool
+    const miniGames: MastermindMiniGameId[] = ['power_split', 'cyber_cipher', 'leverage_pool'];
+    g.currentMiniGame = miniGames[(g.currentRound - 1) % miniGames.length];
     g.phase = 'minigame';
-    g.timer = roomState.settings.mastermindMiniGameTime ?? 60;
-    g.nightNews = [];
-    g.mvpPlayerId = undefined;
+    g.timer = 50;
+    g.auctionSlots = MastermindEngine.generateAuctionSlots(g.currentRound);
+
+    // Clear one-round status effects
+    for (const p of Object.values(g.players)) {
+      p.isShieldedThisRound = false;
+      p.isLockedOut = false;
+      p.selectedAbilityType = undefined;
+      p.selectedAbilityTarget = undefined;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Win Condition Check (End Game Paths)
+  // ------------------------------------------------------------------
+  private static checkWinCondition(roomState: RoomState, forceGameOver = false): void {
+    const g = roomState.mastermindState;
+    if (!g) return;
+
+    const living = Object.values(g.players).filter((p) => p.health !== 'dead');
+    const livingSyndicate = living.filter((p) => p.team === 'syndicate');
+    const livingTown = living.filter((p) => p.team === 'town');
+
+    // 1. Killer Core Detonation or Town Extinction
+    if (g.detonationArmed || livingTown.length === 0) {
+      g.winner = 'syndicate';
+      g.winnerReason = 'The Syndicate detonated the core and eliminated Town resistance.';
+      g.phase = 'game_over';
+      roomState.status = 'game_over';
+      g.timer = 15;
+      return;
+    }
+
+    // 2. Doctor Panacea Cure or All Syndicate Eliminated
+    if (g.panaceaProgress >= 100 || livingSyndicate.length === 0) {
+      g.winner = 'town';
+      g.winnerReason = 'The Town synthesized the Panacea and secured shelter quarantine.';
+      g.phase = 'game_over';
+      roomState.status = 'game_over';
+      g.timer = 15;
+      return;
+    }
+
+    if (forceGameOver) {
+      g.winner = livingTown.length >= livingSyndicate.length ? 'town' : 'syndicate';
+      g.winnerReason = 'Final round protocol concluded. Majority control established.';
+      g.phase = 'game_over';
+      roomState.status = 'game_over';
+      g.timer = 15;
+    }
   }
 }
-

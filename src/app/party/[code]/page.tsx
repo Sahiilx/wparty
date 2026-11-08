@@ -73,6 +73,9 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
     useMastermindAbility,
     voteMastermindSuspect,
     nextMastermindPhase,
+    bidMastermindAuction,
+    claimMastermindFreeCards,
+    craftMastermindItem,
     skipTimer,
   } = usePartyRoom(roomCode);
 
@@ -309,6 +312,9 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
               onVoteSuspect={voteMastermindSuspect}
               onReturnToLobby={returnToLobby}
               onSkipTimer={skipTimer}
+              onBidAuction={bidMastermindAuction}
+              onClaimFreeCards={claimMastermindFreeCards}
+              onCraftItem={craftMastermindItem}
             />
           ) : (
             <SkribblGame
@@ -323,25 +329,27 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
           )}
         </div>
 
-        {/* Right / Modular Party Chat Panel */}
-        <div
-          className={`${CHAT_WIDTHS[chatWidthIdx].class} h-64 md:h-full flex-shrink-0 transition-all duration-200`}
-        >
-          <PartyChat
-            messages={messages}
-            onSendMessage={sendChat}
-            isDrawer={isChatLocked}
-            onCycleWidth={cycleChatWidth}
-            widthLabel={CHAT_WIDTHS[chatWidthIdx].label}
-            placeholder={
-              roomState.status === "playing"
-                ? roomState.selectedGameId === "word_fortune"
-                  ? "Type full phrase to solve..."
-                  : "Type your guess here..."
-                : "Chat with party members..."
-            }
-          />
-        </div>
+        {/* Right / Modular Party Chat Panel — hidden during Mastermind Protocol */}
+        {roomState.selectedGameId !== "mastermind" && (
+          <div
+            className={`${CHAT_WIDTHS[chatWidthIdx].class} h-64 md:h-full flex-shrink-0 transition-all duration-200`}
+          >
+            <PartyChat
+              messages={messages}
+              onSendMessage={sendChat}
+              isDrawer={isChatLocked}
+              onCycleWidth={cycleChatWidth}
+              widthLabel={CHAT_WIDTHS[chatWidthIdx].label}
+              placeholder={
+                roomState.status === "playing"
+                  ? roomState.selectedGameId === "word_fortune"
+                    ? "Type full phrase to solve..."
+                    : "Type your guess here..."
+                  : "Chat with party members..."
+              }
+            />
+          </div>
+        )}
       </div>
 
       {/* First Join Customization Modal */}

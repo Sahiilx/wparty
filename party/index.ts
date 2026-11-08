@@ -737,13 +737,38 @@ export default class PartyServer implements Party.Server {
 
       case 'MASTERMIND_BUY_ITEM': {
         if (this.roomState.status === 'playing') {
-          const ok = MastermindEngine.buyItem(this.roomState, playerId, msg.item);
-          if (ok) {
-            const p = this.roomState.players[playerId];
-            this.addSystemMessage(`🛒 ${p?.name || 'Player'} purchased an item from the shop!`);
-            this.broadcastState();
-          }
+          this.broadcastState();
         }
+        break;
+      }
+
+      case 'MASTERMIND_BID_AUCTION': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.bidAuction(this.roomState, playerId, msg.slotId, msg.bidAmount);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_CLAIM_FREE_CARDS': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.claimFreeCards(this.roomState, playerId);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_CRAFT_ITEM': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.craftItem(this.roomState, playerId, msg.resultItem);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_TABLE_ACTION': {
+        // No persistent state; just broadcast for other clients to animate
+        this.broadcastState();
         break;
       }
 
@@ -757,12 +782,10 @@ export default class PartyServer implements Party.Server {
 
       case 'MASTERMIND_VOTE_SUSPECT': {
         if (this.roomState.status === 'playing') {
-          const ok = MastermindEngine.vote(this.roomState, playerId, msg.suspectId);
-          if (ok) {
-            const p = this.roomState.players[playerId];
-            this.addSystemMessage(`🗳️ ${p?.name || 'Player'} cast their vote!`);
-            this.broadcastState();
+          if (this.roomState.mastermindState?.votes) {
+            this.roomState.mastermindState.votes[playerId] = msg.suspectId;
           }
+          this.broadcastState();
         }
         break;
       }

@@ -260,6 +260,22 @@ export function usePartyRoom(roomCode: string) {
     send({ type: "MASTERMIND_BUY_ITEM", item });
   }, [send]);
 
+  const bidMastermindAuction = useCallback((slotId: string, bidAmount: number) => {
+    send({ type: "MASTERMIND_BID_AUCTION", slotId, bidAmount });
+  }, [send]);
+
+  const claimMastermindFreeCards = useCallback(() => {
+    send({ type: "MASTERMIND_CLAIM_FREE_CARDS" });
+  }, [send]);
+
+  const craftMastermindItem = useCallback((resultItem: import("../../party/types").MastermindItem) => {
+    send({ type: "MASTERMIND_CRAFT_ITEM", resultItem });
+  }, [send]);
+
+  const tableActionMastermind = useCallback((action: 'point' | 'laser' | 'emote', targetId?: string) => {
+    send({ type: "MASTERMIND_TABLE_ACTION", action, targetId });
+  }, [send]);
+
   const useMastermindAbility = useCallback((abilityType: string, targetId?: string) => {
     send({ type: "MASTERMIND_USE_ABILITY", abilityType, targetId });
   }, [send]);
@@ -313,6 +329,10 @@ export function usePartyRoom(roomCode: string) {
     guessImposterWord,
     submitMastermindMinigameScore,
     buyMastermindItem,
+    bidMastermindAuction,
+    claimMastermindFreeCards,
+    craftMastermindItem,
+    tableActionMastermind,
     useMastermindAbility,
     voteMastermindSuspect,
     nextMastermindPhase,
