@@ -98,6 +98,47 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     gridHelper.position.y = -0.05;
     scene.add(gridHelper);
 
+    // 5b. Holographic Base Platform disc
+    const baseGeo = new THREE.CylinderGeometry(38, 38, 0.15, 64);
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x0ea5e9),
+      emissive: new THREE.Color(0x0ea5e9),
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.15,
+      roughness: 0.1,
+      metalness: 0.9,
+    });
+    const basePlatform = new THREE.Mesh(baseGeo, baseMat);
+    basePlatform.position.y = -0.1;
+    scene.add(basePlatform);
+
+    // Glowing ring edge
+    const ringEdgeGeo = new THREE.TorusGeometry(38, 0.4, 8, 64);
+    const ringEdgeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x38bdf8),
+      emissive: new THREE.Color(0x38bdf8),
+      emissiveIntensity: 1.5,
+    });
+    const ringEdge = new THREE.Mesh(ringEdgeGeo, ringEdgeMat);
+    ringEdge.rotation.x = Math.PI / 2;
+    ringEdge.position.y = 0.0;
+    scene.add(ringEdge);
+
+    // 5c. Animated scan plane
+    const scanGeo = new THREE.PlaneGeometry(80, 80);
+    const scanMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0x38bdf8),
+      transparent: true,
+      opacity: 0.04,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const scanMesh = new THREE.Mesh(scanGeo, scanMat);
+    scanMesh.rotation.x = Math.PI / 2;
+    scanMesh.position.y = 0;
+    scene.add(scanMesh);
+
     // 6. Build Shelter Architecture from Oakhaven Layout
     const sectorMeshes: Record<string, THREE.Mesh> = {};
 
@@ -133,7 +174,7 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
       // Sector Thick Walls
       if (sec.type !== "corridor") {
         if (isDome) {
-          // Circular Wall Tube
+          // Circular Wall Tube — with emissive glow
           const wallGeo = new THREE.CylinderGeometry(
             sec.radius || 5,
             sec.radius || 5,
@@ -144,10 +185,11 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
           );
           const wallMat = new THREE.MeshStandardMaterial({
             color: new THREE.Color(sec.wallColor),
+            emissive: new THREE.Color(sec.wallColor),
+            emissiveIntensity: 0.15,
             roughness: 0.2,
             metalness: 0.8,
             side: THREE.DoubleSide,
-            wireframe: false,
           });
           const wallMesh = new THREE.Mesh(wallGeo, wallMat);
           wallMesh.position.set(sec.x, wallHeight / 2, sec.z);
@@ -157,11 +199,13 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
           const halfW = sec.width / 2;
           const halfD = sec.depth / 2;
 
-          // 4 Thick Wall Slabs
+          // 4 Thick Wall Slabs — with emissive glow
           const createWallSlab = (w: number, d: number, px: number, pz: number) => {
             const slabGeo = new THREE.BoxGeometry(w, wallHeight, d);
             const slabMat = new THREE.MeshStandardMaterial({
               color: new THREE.Color(sec.wallColor),
+              emissive: new THREE.Color(sec.wallColor),
+              emissiveIntensity: 0.12,
               roughness: 0.3,
               metalness: 0.7,
             });
@@ -179,27 +223,37 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
 
       // Creative Roofs (Domes, Chamfers, Holographic Wireframe Caps)
       if (sec.roofType === "dome") {
-        // High Hemispherical Dome Roof
-        const domeGeo = new THREE.SphereGeometry(
-          sec.radius || 6,
-          24,
-          16,
-          0,
-          Math.PI * 2,
-          0,
-          Math.PI / 2
-        );
-        const domeMat = new THREE.MeshStandardMaterial({
+        // Solid translucent dome
+        const domeSolidGeo = new THREE.SphereGeometry(sec.radius || 6, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const domeSolidMat = new THREE.MeshStandardMaterial({
           color: new THREE.Color(sec.wallColor),
+          emissive: new THREE.Color(sec.wallColor),
+          emissiveIntensity: 0.1,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          roughness: 0.1,
+          metalness: 0.9,
+        });
+        const domeSolid = new THREE.Mesh(domeSolidGeo, domeSolidMat);
+        domeSolid.position.set(sec.x, wallHeight, sec.z);
+        scene.add(domeSolid);
+
+        // Wireframe overlay dome
+        const domeWireGeo = new THREE.SphereGeometry(sec.radius || 6, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        const domeWireMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(sec.wallColor),
+          emissive: new THREE.Color(sec.wallColor),
+          emissiveIntensity: 0.6,
           roughness: 0.1,
           metalness: 0.9,
           transparent: true,
-          opacity: 0.45,
+          opacity: 0.55,
           wireframe: true,
         });
-        const domeMesh = new THREE.Mesh(domeGeo, domeMat);
-        domeMesh.position.set(sec.x, wallHeight, sec.z);
-        scene.add(domeMesh);
+        const domeWire = new THREE.Mesh(domeWireGeo, domeWireMat);
+        domeWire.position.set(sec.x, wallHeight, sec.z);
+        scene.add(domeWire);
       } else if (sec.roofType === "chamfer") {
         const capGeo = new THREE.ConeGeometry((sec.width || 6) * 0.65, 2.5, 8);
         const capMat = new THREE.MeshStandardMaterial({
@@ -210,6 +264,18 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
         });
         const capMesh = new THREE.Mesh(capGeo, capMat);
         capMesh.position.set(sec.x, wallHeight + 1.25, sec.z);
+        scene.add(capMesh);
+      } else if (sec.roofType === "flat" && sec.shape !== "circle") {
+        const capGeo = new THREE.BoxGeometry(sec.width, 0.08, sec.depth);
+        const capMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(sec.wallColor),
+          emissive: new THREE.Color(sec.wallColor),
+          emissiveIntensity: 0.2,
+          transparent: true,
+          opacity: 0.3,
+        });
+        const capMesh = new THREE.Mesh(capGeo, capMat);
+        capMesh.position.set(sec.x, wallHeight + 0.04, sec.z);
         scene.add(capMesh);
       }
 
@@ -229,6 +295,22 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     });
 
     sectorMeshesRef.current = sectorMeshes;
+
+    // 6b. Infected tokens inside lockdown dome (3 pulsing red spheres)
+    for (let i = 0; i < 3; i++) {
+      const infGeo = new THREE.SphereGeometry(0.6, 12, 12);
+      const infMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xef4444),
+        emissive: new THREE.Color(0xef4444),
+        emissiveIntensity: 1.2,
+        roughness: 0.3,
+      });
+      const infMesh = new THREE.Mesh(infGeo, infMat);
+      const angle = (i / 3) * Math.PI * 2;
+      infMesh.position.set(Math.cos(angle) * 2.5, 1.0, Math.sin(angle) * 2.5);
+      infMesh.userData = { isInfected: true };
+      scene.add(infMesh);
+    }
 
     // 7. Group for Dynamic Noise / Emergency Pings
     const pingsGroup = new THREE.Group();
@@ -303,6 +385,18 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
       const elapsed = clock.getElapsedTime();
+
+      // Animated scan line sweep
+      scanMesh.position.y = (elapsed * 1.5) % 5 - 0.2;
+
+      // Pulse infected tokens
+      scene.children.forEach((child) => {
+        if (child instanceof THREE.Mesh && child.userData.isInfected) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          mat.emissiveIntensity = 0.8 + Math.sin(elapsed * 4) * 0.6;
+          child.scale.setScalar(1 + Math.sin(elapsed * 3 + 1) * 0.1);
+        }
+      });
 
       // Pulsate noise / alarm pings
       if (pingsGroupRef.current) {
@@ -447,7 +541,7 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 backdrop-blur-md">
           <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
           <span className="text-xs font-black tracking-widest text-cyan-300 uppercase">
-            Oakhaven 3D Holographic Facility Grid
+            ☢ OAKHAVEN SHELTER — HOLOGRAPHIC INTEL MAP
           </span>
         </div>
         <div className="text-[10px] text-slate-400 font-mono px-1">
@@ -482,7 +576,12 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
           <span>Central Dome: Fortified Lockdown Active</span>
         </div>
       )}
+
+      {/* INFECTED IN DOME HUD Badge */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/90 border border-rose-500/60 backdrop-blur-md text-xs font-bold text-rose-300 z-10 animate-pulse">
+        <span className="w-2 h-2 rounded-full bg-rose-500" />
+        <span>⚠ 3 INFECTED — LOCKDOWN DOME</span>
+      </div>
     </div>
   );
 };
-

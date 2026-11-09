@@ -52,7 +52,7 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
   onCraftItem,
   onClaimFreeCards,
 }) => {
-  // State for hovered item (Interactive Research Blueprint Popup!)
+  // State for hovered item (tooltip on card)
   const [hoveredItem, setHoveredItem] = useState<MastermindItem | null>(null);
   const [selectedBidSlotId, setSelectedBidSlotId] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(20);
@@ -121,6 +121,18 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
         {/* Left Column: Blind Auction Pool (Single-Purchase Limit) */}
         <div className="lg:col-span-3 flex flex-col gap-2.5 bg-slate-900/80 border border-slate-800 rounded-2xl p-3 overflow-y-auto">
+          {/* AUCTION OPEN Banner */}
+          <div className="flex items-center justify-center gap-2 py-1.5 rounded-xl bg-gradient-to-r from-cyan-950 to-slate-900 border border-cyan-400/50 animate-pulse mb-2">
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">🔨 AUCTION OPEN</span>
+          </div>
+
+          {/* Wealth Tax badge at top of auction column if active */}
+          {myPlayer.wonAuctionLastRound && (
+            <div className="flex items-center justify-center gap-1.5 py-1 rounded-lg bg-rose-950/70 border border-rose-500/50 text-[10px] text-rose-300 font-bold">
+              <span>⚠️ WEALTH TAX +20%</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2 text-xs font-black tracking-wider text-cyan-300 uppercase">
               <ShoppingBag className="w-4 h-4 text-cyan-400" />
@@ -138,11 +150,12 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
               };
               const isSelected = selectedBidSlotId === slot.id;
               const isBidSubmitted = submittedBidSlotId === slot.id;
+              const tierLabel = slot.type === "tier2" ? "High-Value Asset" : "Tier 1";
 
               return (
                 <div
                   key={slot.id}
-                  onClick={() => setSelectedBidSlotId(slot.id)}
+                  onClick={() => !isBidSubmitted && setSelectedBidSlotId(isSelected ? null : slot.id)}
                   className={`p-2.5 rounded-xl border flex flex-col gap-1.5 cursor-pointer transition-all ${
                     isSelected
                       ? "bg-cyan-950/70 border-cyan-400 shadow-md shadow-cyan-950"
@@ -151,25 +164,35 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{itemInfo.icon}</span>
+                      <span className="text-3xl">{itemInfo.icon}</span>
                       <div>
-                        <div className="text-xs font-bold text-white truncate">{itemInfo.name}</div>
+                        <div className="text-sm font-black text-white truncate">{itemInfo.name}</div>
                         <span className="text-[9px] text-purple-400 uppercase font-mono tracking-wider">
-                          {slot.type === "tier2" ? "High-Value Asset" : "Raw Component"}
+                          {tierLabel}
                         </span>
                       </div>
                     </div>
-                    <span className="text-xs font-mono font-bold text-amber-400">
-                      ~{slot.basePrice}c
-                    </span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-xs font-mono font-bold text-amber-400 flex items-center gap-0.5">
+                        💰 {slot.basePrice}c
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-[10px] text-slate-400 line-clamp-2">
                     {itemInfo.description}
                   </p>
 
-                  {/* Bid Input if selected */}
-                  {isSelected && (
+                  {/* Bid submitted confirmation */}
+                  {isBidSubmitted && (
+                    <div className="text-[10px] font-black text-emerald-400 flex items-center gap-1 pt-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      ✓ BID LOCKED IN
+                    </div>
+                  )}
+
+                  {/* Bid Input if selected & not yet submitted */}
+                  {isSelected && !isBidSubmitted && (
                     <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
                       <div className="flex items-center justify-between text-[10px] font-mono">
                         <span className="text-slate-400">Secret Bid:</span>
@@ -193,9 +216,10 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
                             handlePlaceBid(slot.id);
                           }}
                           disabled={isBidSubmitted}
-                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 rounded-lg text-[10px] font-black text-slate-950 uppercase"
+                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 rounded-lg text-[10px] font-black text-slate-950 uppercase flex items-center gap-1"
                         >
-                          {isBidSubmitted ? "Bid Placed" : "Submit Bid"}
+                          <Lock className="w-3 h-3" />
+                          🔒 PLACE BID
                         </button>
                       </div>
                     </div>
@@ -228,9 +252,9 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
           </div>
 
           {/* User's Owned Items Grid */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {myPlayer.inventory.length === 0 ? (
-              <div className="col-span-3 py-6 text-center text-xs text-slate-500 font-mono">
+              <div className="col-span-2 py-6 text-center text-xs text-slate-500 font-mono">
                 Backpack is empty. Win components from the auction or forage sectors!
               </div>
             ) : (
@@ -244,14 +268,33 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
                     key={`${itemId}-${idx}`}
                     onMouseEnter={() => setHoveredItem(itemId)}
                     onMouseLeave={() => setHoveredItem(null)}
-                    className={`relative p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                    className={`relative p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all min-h-[80px] overflow-visible ${
                       isHovered
                         ? "bg-purple-950 border-purple-400 scale-105 shadow-md shadow-purple-900/60"
                         : "bg-slate-950 border-slate-800 hover:border-slate-700"
                     }`}
                   >
-                    <span className="text-2xl mb-1">{item.icon}</span>
-                    <span className="text-[10px] font-bold text-white truncate max-w-full">
+                    {/* Minimal tooltip */}
+                    {isHovered && hoveredDetail && (
+                      <div
+                        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-slate-900 border border-purple-500/50 rounded-xl p-2.5 z-50 shadow-2xl pointer-events-none"
+                        style={{ backdropFilter: 'blur(8px)' }}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-base">{hoveredDetail.icon}</span>
+                          <span className="text-xs font-black text-white">{hoveredDetail.name}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 leading-tight">{hoveredDetail.usageText}</p>
+                        {possibleRecipes[0] && (
+                          <div className="mt-1.5 pt-1 border-t border-slate-800 text-[10px] text-cyan-300 font-mono">
+                            🔬 Craft: {possibleRecipes[0].icon} {possibleRecipes[0].name}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <span className="text-3xl mb-1.5">{item.icon}</span>
+                    <span className="text-xs font-bold text-white truncate max-w-full">
                       {item.name}
                     </span>
                     <span className="text-[8px] text-slate-400 font-mono uppercase">
@@ -263,91 +306,9 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
             )}
           </div>
 
-          {/* INTERACTIVE HOVER RESEARCH BLUEPRINT POPUP */}
-          {hoveredDetail ? (
-            <div className="mt-2 p-3 rounded-2xl bg-slate-950 border border-purple-500/40 shadow-xl flex flex-col gap-2 animate-fade-in">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-                <span className="text-2xl">{hoveredDetail.icon}</span>
-                <div>
-                  <div className="text-xs font-black text-purple-300">{hoveredDetail.name}</div>
-                  <div className="text-[9px] text-slate-400 font-mono">{hoveredDetail.description}</div>
-                </div>
-              </div>
-
-              {/* Usage text below it as requested */}
-              <div className="p-2 rounded-xl bg-purple-950/40 border border-purple-500/20 text-[10px] text-purple-200">
-                <span className="font-bold">Usage: </span>
-                <span>{hoveredDetail.usageText}</span>
-              </div>
-
-              {/* Recipes that use this item */}
-              <div className="flex flex-col gap-1.5 mt-1">
-                <span className="text-[10px] font-black uppercase text-cyan-300 tracking-wider">
-                  Synthesizable With This Item:
-                </span>
-
-                {possibleRecipes.length === 0 ? (
-                  <span className="text-[10px] text-slate-500 italic">No direct craft paths found.</span>
-                ) : (
-                  possibleRecipes.map((recipe) => {
-                    // Check if player has all required components
-                    const canCraft = recipe.components?.every((comp) =>
-                      myPlayer.inventory.includes(comp)
-                    );
-
-                    return (
-                      <div
-                        key={recipe.id}
-                        className={`p-2 rounded-xl border flex flex-col gap-1 transition-all ${
-                          canCraft
-                            ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-200"
-                            : "bg-slate-900/60 border-slate-800 text-slate-400"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <span>{recipe.icon}</span>
-                            <span>{recipe.name}</span>
-                          </span>
-                          {canCraft && (
-                            <button
-                              onClick={() => onCraftItem(recipe.id)}
-                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-[9px] uppercase rounded-md shadow"
-                            >
-                              Craft
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Components breakdown: owned = normal, missing = dimmed/greyed out */}
-                        <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                          {recipe.components?.map((reqItem, cIdx) => {
-                            const reqInfo = MASTER_ITEM_CATALOG[reqItem];
-                            const isOwned = myPlayer.inventory.includes(reqItem);
-
-                            return (
-                              <span
-                                key={cIdx}
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-mono flex items-center gap-1 border ${
-                                  isOwned
-                                    ? "bg-slate-800 border-cyan-400/60 text-cyan-300 font-bold"
-                                    : "bg-slate-950 border-slate-800 text-slate-600 opacity-40 line-through"
-                                }`}
-                              >
-                                <span>{reqInfo?.icon || "⚙️"}</span>
-                                <span>{reqInfo?.name || reqItem}</span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-center flex flex-col items-center justify-center text-slate-500">
+          {/* Empty state hint if no hover active */}
+          {!hoveredItem && myPlayer.inventory.length > 0 && (
+            <div className="mt-2 p-3 rounded-2xl bg-slate-950/60 border border-slate-800 text-center flex flex-col items-center justify-center text-slate-500">
               <Info className="w-5 h-5 mb-1 text-slate-600" />
               <span className="text-[11px] font-mono">
                 Hover over any item in your backpack to inspect crafting formulas & component requirements.
@@ -359,4 +320,3 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
     </div>
   );
 };
-

@@ -12,6 +12,7 @@ interface PowerSplitProps {
 }
 
 export const PowerSplitMiniGame: React.FC<PowerSplitProps> = ({ onComplete, initialMW = 100 }) => {
+  const [showGuide, setShowGuide] = useState(true);
   const [round, setRound] = useState(1);
   const [totalMW, setTotalMW] = useState(initialMW);
   const [nodeA, setNodeA] = useState(0);
@@ -103,7 +104,28 @@ export const PowerSplitMiniGame: React.FC<PowerSplitProps> = ({ onComplete, init
   };
 
   return (
-    <div className="flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-amber-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-amber-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+      {/* How-To Guide Panel */}
+      {showGuide && (
+        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
+            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+          </div>
+          <div className="flex flex-col gap-2 text-xs text-slate-300">
+            <div className="flex items-start gap-2"><span className="text-lg">⚡</span><div><div className="font-bold text-white">Split your 100 MW pool</div><div className="text-slate-400">You have 100 total MegaWatts for the whole match.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">🎯</span><div><div className="font-bold text-white">Allocate to 3 Nodes</div><div className="text-slate-400">Each round has Node A/B/C with point values. Slide to allocate MW.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">🏆</span><div><div className="font-bold text-white">Outbid rivals to win nodes</div><div className="text-slate-400">The player who put the most MW on a node wins its full points.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">⚠️</span><div><div className="font-bold text-white">Spent MW is gone forever!</div><div className="text-slate-400">Manage your budget across all 3 rounds wisely.</div></div></div>
+          </div>
+        </div>
+      )}
+
+      {/* ? Button when guide is hidden */}
+      {!showGuide && (
+        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
+      )}
+
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-amber-500/20 pb-4 mb-4">
         <div className="flex items-center gap-3">
@@ -259,6 +281,7 @@ const CIPHER_WORDS = [
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export const CyberCipherMiniGame: React.FC<CyberCipherProps> = ({ onComplete }) => {
+  const [showGuide, setShowGuide] = useState(true);
   const [wordIndex, setWordIndex] = useState(0);
   const targetWord = CIPHER_WORDS[wordIndex] || "SECURITY";
   const [currentWheels, setCurrentWheels] = useState<string[]>([]);
@@ -344,7 +367,28 @@ export const CyberCipherMiniGame: React.FC<CyberCipherProps> = ({ onComplete }) 
   };
 
   return (
-    <div className="flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-cyan-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-cyan-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+      {/* How-To Guide Panel */}
+      {showGuide && (
+        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
+            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+          </div>
+          <div className="flex flex-col gap-2 text-xs text-slate-300">
+            <div className="flex items-start gap-2"><span className="text-lg">🔤</span><div><div className="font-bold text-white">Spin the letter wheels</div><div className="text-slate-400">Each wheel has letters. Use ▲/▼ buttons to scroll each wheel.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">🎯</span><div><div className="font-bold text-white">Form the target word</div><div className="text-slate-400">Align the highlighted center bar letters to spell the secret word.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">✅</span><div><div className="font-bold text-white">Submit to claim coins</div><div className="text-slate-400">Each solved word awards +15 to +75 coins based on difficulty.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">🔒</span><div><div className="font-bold text-white">Wrong = 3s lockout!</div><div className="text-slate-400">Submitting an incorrect word locks your terminal for 3 seconds.</div></div></div>
+          </div>
+        </div>
+      )}
+
+      {/* ? Button when guide is hidden */}
+      {!showGuide && (
+        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
+      )}
+
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-cyan-500/20 pb-4 mb-4">
         <div className="flex items-center gap-3">
@@ -435,6 +479,7 @@ interface LeveragePoolProps {
 }
 
 export const LeveragePoolMiniGame: React.FC<LeveragePoolProps> = ({ onComplete }) => {
+  const [showGuide, setShowGuide] = useState(true);
   const [currentRound, setCurrentRound] = useState(1);
   const [bidValue, setBidValue] = useState<number>(50);
   const [burnedDecades, setBurnedDecades] = useState<number[]>([]); // e.g., 7 for 70-79
@@ -524,7 +569,28 @@ export const LeveragePoolMiniGame: React.FC<LeveragePoolProps> = ({ onComplete }
   };
 
   return (
-    <div className="flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-purple-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-purple-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
+      {/* How-To Guide Panel */}
+      {showGuide && (
+        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
+            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+          </div>
+          <div className="flex flex-col gap-2 text-xs text-slate-300">
+            <div className="flex items-start gap-2"><span className="text-lg">🎲</span><div><div className="font-bold text-white">Secret bid 1-100</div><div className="text-slate-400">Pick a number between 1 and 100 without others seeing it.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">📊</span><div><div className="font-bold text-white">Hit the target %</div><div className="text-slate-400">The target is 60-95% of the entire table's average bid. Land in the zone to win.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">🔥</span><div><div className="font-bold text-white">Decade lockout rule</div><div className="text-slate-400">If you bid in a decade (e.g. 70-79), that entire range is BURNED for future rounds.</div></div></div>
+            <div className="flex items-start gap-2"><span className="text-lg">💰</span><div><div className="font-bold text-white">Safe zone = coins!</div><div className="text-slate-400">Bids inside the safe zone share the prize pool. Outliers get zero.</div></div></div>
+          </div>
+        </div>
+      )}
+
+      {/* ? Button when guide is hidden */}
+      {!showGuide && (
+        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
+      )}
+
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-purple-500/20 pb-4 mb-4">
         <div className="flex items-center gap-3">

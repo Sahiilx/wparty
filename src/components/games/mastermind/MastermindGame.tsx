@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   RoomState,
   MastermindGameState,
@@ -25,6 +25,16 @@ import { NewsGazetteSlideshow } from "./NewsGazetteSlideshow";
 import { OperativeToken } from "./OakhavenMap3D";
 import { OAKHAVEN_SECTORS } from "./oakhavenMapData";
 
+// ============================================================
+// A. UI THEMES SYSTEM
+// ============================================================
+type MastermindTheme = "cyberpunk" | "dieselpunk" | "classic";
+const THEMES = {
+  cyberpunk:  { primary: "#38bdf8", accent: "#f43f5e",  bg: "#060913",  surface: "#0f172a", border: "#1e3a5f",   glow: "#0ea5e9" },
+  dieselpunk: { primary: "#f97316", accent: "#eab308",  bg: "#1a0f00",  surface: "#2d1b00", border: "#7c3800",   glow: "#f97316" },
+  classic:    { primary: "#8b5cf6", accent: "#a855f7",  bg: "#0d0d1a",  surface: "#1a1a2e", border: "#2d2d5e",   glow: "#8b5cf6" },
+};
+
 interface MastermindGameProps {
   roomState: RoomState;
   myId: string;
@@ -43,16 +53,13 @@ const ROLE_ICONS: Record<string, string> = {
   sheriff: "⚖️", killer: "🔫", doctor: "🩺", thief: "🧤",
   soldier: "🛡️", joker: "🃏", wizard: "🔮", hacker: "💻",
 };
-
 const ROLE_COLORS: Record<string, string> = {
   sheriff: "#38bdf8", killer: "#f43f5e", doctor: "#10b981", thief: "#a855f7",
   soldier: "#3b82f6", joker: "#f97316", wizard: "#8b5cf6", hacker: "#06b6d4",
 };
-
 const HEALTH_ICONS: Record<string, string> = {
   healthy: "💚", wounded: "🩸", critical: "⚠️", dead: "💀",
 };
-
 const PHASE_INFO: Record<string, { label: string; icon: string; color: string }> = {
   role_reveal:          { label: "Role Reveal",         icon: "🃏", color: "text-amber-300" },
   minigame:             { label: "Mini-Game",           icon: "⚡", color: "text-cyan-300" },
@@ -78,6 +85,18 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   const g = roomState.mastermindState as MastermindGameState | undefined;
   const [selectedSectorId, setSelectedSectorId] = useState("lockdown_dome");
 
+  // A. Theme state
+  const [theme, setTheme] = useState<MastermindTheme>("cyberpunk");
+  const t = THEMES[theme];
+
+  // B. Card flip state for role_reveal
+  const [flippedIdx, setFlippedIdx] = useState<number | null>(null);
+
+  // C. Phase transition announcement
+  const [showPhaseAnnounce, setShowPhaseAnnounce] = useState(false);
+  const [announceText, setAnnounceText] = useState("");
+  const prevPhaseRef = useRef("");
+
   const myPlayer = g?.players?.[myId];
 
   // Compute anonymous operative tokens for the 3D map
@@ -100,9 +119,28 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
     return Object.values(g.players);
   }, [g]);
 
+  // C. Phase transition effect
+  useEffect(() => {
+    if (!g) return;
+    const phase = g.phase;
+    if (phase !== prevPhaseRef.current) {
+      prevPhaseRef.current = phase;
+      if (phase !== "role_reveal" && phase !== "game_over") {
+        const phaseInfo = PHASE_INFO[phase] || { label: phase };
+        setAnnounceText(`Round ${g.currentRound}  •  ${phaseInfo.label}`);
+        setShowPhaseAnnounce(true);
+        const tid = setTimeout(() => setShowPhaseAnnounce(false), 2800);
+        return () => clearTimeout(tid);
+      }
+    }
+  }, [g?.phase]);
+
   if (!g) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-400 font-mono text-sm">
+      <div
+        className="flex-1 flex items-center justify-center text-slate-400 font-mono text-sm"
+        style={{ backgroundColor: "#060913" }}
+      >
         <Bot className="w-6 h-6 mr-2 animate-pulse" />
         Connecting to Oakhaven Shelter Protocol...
       </div>
@@ -122,7 +160,10 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
     const winnerLabel = g.winner === "town" ? "Town Secured!" : g.winner === "syndicate" ? "Syndicate Wins!" : "Wildcard Victor!";
 
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-white p-8 select-none">
+      <div
+        className="flex-1 flex flex-col items-center justify-center text-white p-8 select-none"
+        style={{ backgroundColor: t.bg }}
+      >
         <div className="max-w-2xl w-full flex flex-col items-center gap-8">
           <div className="text-7xl animate-bounce">{winnerIcon}</div>
           <h2 className="text-4xl font-black tracking-widest uppercase text-center" style={{ color: winnerColor }}>
@@ -133,7 +174,10 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           )}
 
           {/* Player Role Reveal Table */}
-          <div className="w-full bg-slate-900/80 border border-slate-800 rounded-3xl p-6">
+          <div
+            className="w-full rounded-3xl p-6"
+            style={{ backgroundColor: t.surface + "cc", border: `1px solid ${t.border}` }}
+          >
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
               <Users className="w-4 h-4" />
               Identity Debrief – All Roles Revealed
@@ -161,7 +205,11 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
 
           <button
             onClick={onReturnToLobby}
-            className="px-10 py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black rounded-2xl text-sm uppercase tracking-wider shadow-xl shadow-cyan-600/30 flex items-center gap-2 transition-all"
+            className="px-10 py-3.5 text-white font-black rounded-2xl text-sm uppercase tracking-wider shadow-xl flex items-center gap-2 transition-all"
+            style={{
+              background: `linear-gradient(to right, ${t.primary}, ${t.accent})`,
+              boxShadow: `0 10px 30px ${t.glow}44`,
+            }}
           >
             <RotateCcw className="w-4 h-4" />
             Return to Party Lobby
@@ -172,47 +220,197 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   }
 
   // =========================================================================
-  // ROLE REVEAL PHASE
+  // B. ROLE REVEAL PHASE — Card/Envelope Fan Reveal
   // =========================================================================
   if (phase === "role_reveal") {
-    const roleColor = myPlayer ? ROLE_COLORS[myPlayer.role] : "#38bdf8";
+    const cardCount = Math.min(allPlayers.length, 8);
+    const myCardIdx = (() => {
+      const idx = allPlayers.findIndex((p) => p.id === myId);
+      return idx === -1 ? 0 : idx;
+    })();
+
+    const isMyCardFlipped = flippedIdx === myCardIdx;
+    const roleColor = myPlayer ? ROLE_COLORS[myPlayer.role] : t.primary;
 
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-white p-8 select-none">
-        <div className="max-w-lg w-full flex flex-col items-center gap-8">
-          {/* Dramatic animated card reveal */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center text-white select-none relative overflow-hidden"
+        style={{ backgroundColor: t.bg }}
+      >
+        {/* Full-screen overlay heading */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at center, ${t.glow}18 0%, transparent 70%)` }} />
+
+        <div className="relative z-10 flex flex-col items-center gap-8 px-4 max-w-3xl w-full">
+          {/* Title */}
           <div
-            className="w-72 h-96 rounded-3xl border-2 flex flex-col items-center justify-center shadow-2xl animate-pulse"
-            style={{ borderColor: roleColor, backgroundColor: roleColor + "14", boxShadow: `0 0 60px ${roleColor}30` }}
+            className="text-3xl font-black tracking-[0.4em] uppercase"
+            style={{ color: t.primary, textShadow: `0 0 30px ${t.glow}` }}
           >
-            <div className="text-7xl mb-4 animate-bounce">
-              {myPlayer ? ROLE_ICONS[myPlayer.role] : "🃏"}
-            </div>
-            <span className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
-              Your Secret Role
-            </span>
-            <h2 className="text-3xl font-black capitalize tracking-wide" style={{ color: roleColor }}>
-              {myPlayer?.role || "???"}
-            </h2>
-            <div className="mt-4 px-4 py-2 rounded-xl bg-slate-950/80 text-center mx-4">
-              <span className="text-xs text-slate-300 font-mono">
-                {myPlayer?.team === "town" && "🏛️ You are part of the Town. Protect the shelter!"}
-                {myPlayer?.team === "syndicate" && "💀 You are the Syndicate. Chaos is your ally!"}
-                {myPlayer?.team === "neutral" && "🃏 You are a Wildcard. Write your own fate!"}
+            Choose Your Fate
+          </div>
+
+          {/* Card Fan Row */}
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            {Array.from({ length: cardCount }, (_, i) => {
+              const isFlipped = flippedIdx === i;
+              const isMyCard = i === myCardIdx;
+
+              return (
+                <div
+                  key={i}
+                  onClick={() => setFlippedIdx(i)}
+                  style={{ perspective: "600px", cursor: "pointer" }}
+                  className="relative"
+                >
+                  {/* Inner flipper */}
+                  <div
+                    style={{
+                      width: "90px",
+                      height: "130px",
+                      position: "relative",
+                      transformStyle: "preserve-3d",
+                      transition: "transform 0.65s cubic-bezier(0.4,0,0.2,1)",
+                      transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                    }}
+                  >
+                    {/* FRONT FACE */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                        borderRadius: "14px",
+                        border: `2px solid ${t.primary}`,
+                        backgroundColor: t.surface,
+                        boxShadow: `0 0 18px ${t.glow}55`,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span style={{ fontSize: "1.8rem", opacity: 0.85 }}>❓</span>
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "monospace",
+                          color: t.primary,
+                          letterSpacing: "0.1em",
+                          fontWeight: 700,
+                          textAlign: "center",
+                          padding: "0 6px",
+                        }}
+                      >
+                        CLASSIFIED
+                      </div>
+                      {/* decorative pattern */}
+                      <div style={{ position: "absolute", inset: "6px", border: `1px solid ${t.primary}33`, borderRadius: "10px", pointerEvents: "none" }} />
+                    </div>
+
+                    {/* BACK FACE */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                        transform: "rotateY(180deg)",
+                        borderRadius: "14px",
+                        border: `2px solid ${isMyCard ? roleColor : "#475569"}`,
+                        backgroundColor: isMyCard ? roleColor + "22" : t.surface,
+                        boxShadow: isMyCard ? `0 0 24px ${roleColor}66` : "none",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        padding: "8px",
+                      }}
+                    >
+                      {isMyCard && myPlayer ? (
+                        <>
+                          <span style={{ fontSize: "1.8rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              fontFamily: "monospace",
+                              fontWeight: 900,
+                              color: roleColor,
+                              textTransform: "capitalize",
+                              textAlign: "center",
+                            }}
+                          >
+                            {myPlayer.role}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: "1.4rem" }}>🔒</span>
+                          <div
+                            style={{
+                              fontSize: "9px",
+                              fontFamily: "monospace",
+                              fontWeight: 700,
+                              color: "#64748b",
+                              textAlign: "center",
+                            }}
+                          >
+                            OPERATIVE
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Role reveal detail panel — shown after my card is flipped */}
+          {isMyCardFlipped && myPlayer && (
+            <div
+              className="flex flex-col items-center gap-3 p-6 rounded-3xl"
+              style={{
+                border: `1.5px solid ${roleColor}66`,
+                backgroundColor: roleColor + "12",
+                boxShadow: `0 0 40px ${roleColor}22`,
+                minWidth: "260px",
+              }}
+            >
+              <span style={{ fontSize: "3rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+              <span
+                style={{
+                  fontSize: "1.5rem",
+                  fontWeight: 900,
+                  color: roleColor,
+                  textTransform: "capitalize",
+                  letterSpacing: "0.1em",
+                }}
+              >
+                {myPlayer.role}
               </span>
+              <span className="text-sm font-mono" style={{ color: t.accent }}>
+                {myPlayer.team === "town" && "🏛️ You are part of the Town. Protect the shelter!"}
+                {myPlayer.team === "syndicate" && "💀 You are the Syndicate. Chaos is your ally!"}
+                {myPlayer.team === "neutral" && "🃏 You are a Wildcard. Write your own fate!"}
+              </span>
+              <div className="flex flex-col items-center gap-1 mt-2">
+                <span className="text-2xl">{myPlayer.avatar}</span>
+                <span className="font-mono text-sm font-bold text-slate-300">{myPlayer.name}</span>
+                <span className="text-xs text-slate-500">Your anonymous identity this match</span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Anonymous Operative Identity for this match */}
-          <div className="text-center flex flex-col items-center gap-1">
-            <span className="text-2xl">{myPlayer?.avatar}</span>
-            <span className="font-mono text-sm font-bold text-slate-300">{myPlayer?.name}</span>
-            <span className="text-xs text-slate-500">Your anonymous identity this match</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-slate-400 font-mono text-xs">
+          {/* Timer countdown */}
+          <div className="flex items-center gap-2 font-mono text-xs" style={{ color: t.primary + "bb" }}>
             <Clock className="w-4 h-4 animate-pulse" />
-            <span>Mini-game begins in <span className="text-amber-400 font-bold">{g.timer}s</span></span>
+            <span>
+              Mini-game begins in{" "}
+              <span style={{ color: "#fbbf24", fontWeight: 900 }}>{g.timer}s</span>
+            </span>
           </div>
         </div>
       </div>
@@ -220,7 +418,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   }
 
   // =========================================================================
-  // SHARED CHROME: Phase Header + Player Roster (all non-minigame / non-reveal phases)
+  // SHARED CHROME: Phase Header + Player Roster
   // =========================================================================
 
   const renderPhaseContent = () => {
@@ -228,7 +426,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
     if (phase === "minigame") {
       const miniGame = g.currentMiniGame || "power_split";
 
-      const handleComplete = (coins: number, score: number) => {
+      const handleComplete = (_coins: number, score: number) => {
         onSubmitMinigameScore(score);
       };
 
@@ -305,9 +503,52 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   // MAIN RENDER
   // =========================================================================
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 text-white overflow-hidden select-none">
+    <div
+      className="flex-1 flex flex-col h-full text-white overflow-hidden select-none relative"
+      style={{ backgroundColor: t.bg }}
+    >
+      {/* C. PHASE TRANSITION ANNOUNCE OVERLAY */}
+      {showPhaseAnnounce && (
+        <>
+          <style>{`
+            @keyframes phaseIn {
+              0%   { opacity: 0; transform: scale(0.6); }
+              30%  { opacity: 1; transform: scale(1); }
+              70%  { opacity: 1; transform: scale(1); }
+              100% { opacity: 0; transform: scale(0.3); }
+            }
+          `}</style>
+          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div
+              style={{
+                animation: "phaseIn 2.8s ease forwards",
+                color: t.primary,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "3rem",
+                  fontWeight: 900,
+                  letterSpacing: "0.3em",
+                  textShadow: `0 0 40px ${t.glow}`,
+                }}
+              >
+                {announceText.split("•")[0]}
+              </div>
+              <div style={{ fontSize: "1.5rem", color: t.accent }}>
+                {announceText.split("•")[1]}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* TOP STATUS BAR */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-slate-900/90 border-b border-cyan-500/20 backdrop-blur-md z-30">
+      <div
+        className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 backdrop-blur-md z-30"
+        style={{ backgroundColor: t.surface + "ee", borderBottom: `1px solid ${t.primary}33` }}
+      >
         {/* Phase Info */}
         <div className="flex items-center gap-3">
           <span className={`text-lg ${phaseInfo.color}`}>{phaseInfo.icon}</span>
@@ -326,27 +567,101 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           {Array.from({ length: g.totalRounds }, (_, i) => (
             <div
               key={i}
-              className={`w-5 h-1.5 rounded-full transition-all ${
-                i + 1 < g.currentRound
-                  ? "bg-cyan-500"
-                  : i + 1 === g.currentRound
-                  ? "bg-amber-400 animate-pulse"
-                  : "bg-slate-800"
-              }`}
+              className="w-5 h-1.5 rounded-full transition-all"
+              style={{
+                backgroundColor:
+                  i + 1 < g.currentRound
+                    ? t.primary
+                    : i + 1 === g.currentRound
+                    ? "#fbbf24"
+                    : t.border,
+                animation: i + 1 === g.currentRound ? "pulse 1.5s infinite" : undefined,
+              }}
             />
           ))}
         </div>
 
-        {/* Timer + Host Controls */}
+        {/* Right side: Theme buttons + Timer + Host Controls */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-800 border border-slate-700">
+          {/* A. Theme selector buttons */}
+          <div className="flex items-center gap-1 mr-1">
+            <button
+              onClick={() => setTheme("cyberpunk")}
+              title="Cyberpunk"
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "50%",
+                backgroundColor: "#38bdf8",
+                border: theme === "cyberpunk" ? "2px solid #fff" : "2px solid transparent",
+                cursor: "pointer",
+                transition: "border-color 0.2s",
+                fontSize: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {theme === "cyberpunk" && <span style={{ fontSize: "8px" }}>✓</span>}
+            </button>
+            <button
+              onClick={() => setTheme("dieselpunk")}
+              title="Dieselpunk"
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "50%",
+                backgroundColor: "#f97316",
+                border: theme === "dieselpunk" ? "2px solid #fff" : "2px solid transparent",
+                cursor: "pointer",
+                transition: "border-color 0.2s",
+                fontSize: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {theme === "dieselpunk" && <span style={{ fontSize: "8px" }}>✓</span>}
+            </button>
+            <button
+              onClick={() => setTheme("classic")}
+              title="Classic"
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "50%",
+                backgroundColor: "#8b5cf6",
+                border: theme === "classic" ? "2px solid #fff" : "2px solid transparent",
+                cursor: "pointer",
+                transition: "border-color 0.2s",
+                fontSize: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {theme === "classic" && <span style={{ fontSize: "8px" }}>✓</span>}
+            </button>
+          </div>
+
+          {/* Timer */}
+          <div
+            className="flex items-center gap-2 px-3 py-1 rounded-xl"
+            style={{ backgroundColor: t.border + "88", border: `1px solid ${t.border}` }}
+          >
             <Clock className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-mono text-sm font-black text-amber-300">{g.timer}s</span>
           </div>
+
           {isHost && onSkipTimer && (
             <button
               onClick={onSkipTimer}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-all"
+              className="p-2 rounded-xl transition-all"
+              style={{
+                backgroundColor: t.border + "88",
+                border: `1px solid ${t.border}`,
+                color: "#cbd5e1",
+              }}
               title="Host Skip Timer"
             >
               <FastForward className="w-3.5 h-3.5" />
@@ -355,10 +670,13 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
         </div>
       </div>
 
-      {/* SIDE PLAYER ROSTER - Narrow vertical strip showing anonymous operative status */}
+      {/* SIDE PLAYER ROSTER + MAIN CONTENT */}
       <div className="flex-1 flex overflow-hidden">
         {/* Operative Roster */}
-        <div className="hidden lg:flex flex-col w-16 xl:w-20 bg-slate-900/80 border-r border-slate-800/60 items-center py-3 gap-2 overflow-y-auto flex-shrink-0">
+        <div
+          className="hidden lg:flex flex-col w-16 xl:w-20 items-center py-3 gap-2 overflow-y-auto flex-shrink-0"
+          style={{ backgroundColor: t.surface + "cc", borderRight: `1px solid ${t.border}66` }}
+        >
           {allPlayers.map((p) => (
             <div
               key={p.id}
@@ -368,8 +686,8 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               <div
                 className="relative w-9 h-9 rounded-xl flex items-center justify-center text-lg border transition-all"
                 style={{
-                  borderColor: p.id === myId ? ROLE_COLORS[p.role] : "#334155",
-                  backgroundColor: (p.id === myId ? ROLE_COLORS[p.role] : "#0f172a") + "33",
+                  borderColor: p.id === myId ? ROLE_COLORS[p.role] : t.border,
+                  backgroundColor: (p.id === myId ? ROLE_COLORS[p.role] : t.surface) + "33",
                   opacity: p.health === "dead" ? 0.35 : 1,
                 }}
               >

@@ -211,7 +211,7 @@ export const ROLE_ABILITIES: Record<MastermindRole, RoleAbilitySpec> = {
     },
     normal1: {
       name: "Intercept Ability",
-      desc: "Nullifies target operative’s queued action for this round.",
+      desc: "Nullifies target operative's queued action for this round.",
       icon: "🚫",
       requiresTarget: true,
     },
@@ -250,6 +250,7 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
   const [pointedTargetId, setPointedTargetId] = useState<string | null>(null);
   const [activeEmotes, setActiveEmotes] = useState<Record<string, string>>({});
   const [isLockedIn, setIsLockedIn] = useState(false);
+  const [throwAnim, setThrowAnim] = useState<{ from: string; to: string; emoji: string } | null>(null);
 
   const abilities = ROLE_ABILITIES[myPlayer.role] || ROLE_ABILITIES.sheriff;
 
@@ -283,6 +284,16 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-between p-4 sm:p-6 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl border border-cyan-500/30 shadow-2xl overflow-hidden select-none">
+      {/* Flyover animation style */}
+      <style>{`
+        @keyframes flyIn {
+          0% { transform: scale(0.5) translateY(10px); opacity: 0; }
+          40% { transform: scale(1.3) translateY(-8px); opacity: 1; }
+          100% { transform: scale(1) translateY(0px); opacity: 0.9; }
+        }
+        .throw-fly { animation: flyIn 1.2s ease forwards; }
+      `}</style>
+
       {/* Background Holographic Grid Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-950/20 via-transparent to-transparent pointer-events-none" />
 
@@ -306,8 +317,15 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
 
       {/* Center 3D / Isometric Round Table Visualizer */}
       <div className="relative w-full max-w-xl aspect-[16/10] my-4 flex items-center justify-center">
-        {/* The Round Table Surface */}
-        <div className="relative w-72 sm:w-88 h-44 sm:h-52 rounded-[100%] bg-gradient-to-b from-slate-800 to-slate-950 border-4 border-cyan-500/40 shadow-2xl shadow-cyan-950/80 flex items-center justify-center">
+        {/* The Round Table Surface — Enhanced Cyberpunk */}
+        <div
+          className="relative w-80 sm:w-[400px] h-52 sm:h-64 rounded-[100%] border-4 flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(ellipse at 30% 30%, #1e3a5f 0%, #0f172a 60%, #060913 100%)',
+            borderColor: '#38bdf8',
+            boxShadow: '0 0 60px #0ea5e955, 0 0 20px #0ea5e933, inset 0 0 40px #0ea5e911',
+          }}
+        >
           {/* Table Center Hologram */}
           <div className="w-24 h-24 rounded-full border border-cyan-400/30 bg-cyan-500/10 flex flex-col items-center justify-center text-center p-2">
             <Radio className="w-5 h-5 text-cyan-300 animate-pulse mb-1" />
@@ -328,12 +346,14 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
             const isSelected = selectedTargetId === p.id;
             const isPointed = pointedTargetId === p.id;
             const emote = activeEmotes[p.id];
+            const isThrowTarget = throwAnim && throwAnim.to === p.id;
 
             return (
               <div
                 key={p.id}
                 style={{
                   transform: `translate(${x}px, ${y}px)`,
+                  ...(p.health === 'dead' ? { filter: 'grayscale(1)', opacity: 0.4 } : {}),
                 }}
                 onClick={() => {
                   if (!isMe && p.health !== "dead") {
@@ -348,6 +368,13 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
                 {emote && (
                   <div className="absolute -top-7 px-2 py-0.5 rounded-full bg-slate-900 border border-amber-400 text-lg shadow-lg animate-bounce z-30">
                     {emote}
+                  </div>
+                )}
+
+                {/* Throw animation overlay */}
+                {isThrowTarget && throwAnim && (
+                  <div className="absolute -top-10 text-2xl z-40 throw-fly pointer-events-none">
+                    {throwAnim.emoji}
                   </div>
                 )}
 
@@ -411,6 +438,17 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
                     >
                       👀
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setThrowAnim({ from: myPlayer.id, to: p.id, emoji: ['🍅', '💣', '🎃', '🧨', '🪃'][Math.floor(Math.random() * 5)] });
+                        setTimeout(() => setThrowAnim(null), 1200);
+                      }}
+                      className="p-1 rounded-md bg-orange-900/60 hover:bg-orange-800 text-sm"
+                      title="Throw item"
+                    >
+                      🪃
+                    </button>
                   </div>
                 )}
               </div>
@@ -420,7 +458,7 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
       </div>
 
       {/* Role Card & Action Control Deck */}
-      <div className="w-full max-w-2xl bg-slate-900/90 border border-slate-800 rounded-3xl p-4 flex flex-col gap-3 z-10 backdrop-blur-md">
+      <div className="w-full max-w-3xl w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-4 flex flex-col gap-3 z-10 backdrop-blur-md">
         {/* Role Bar & Passive Trait */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2">
@@ -513,7 +551,7 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
           <div className="flex items-center gap-2">
             {/* Quick Playful Reaction Buttons */}
             <div className="flex items-center gap-1 mr-2">
-              {["🎯", "👀", "🤫", "🍿"].map((em) => (
+              {["🎯", "👀", "🤫", "🍿", "😂", "🤔", "😤", "🫵"].map((em) => (
                 <button
                   key={em}
                   onClick={() => handleTriggerEmote(em)}
@@ -538,4 +576,3 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
     </div>
   );
 };
-
