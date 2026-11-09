@@ -737,6 +737,7 @@ export default class PartyServer implements Party.Server {
 
       case 'MASTERMIND_BUY_ITEM': {
         if (this.roomState.status === 'playing') {
+          MastermindEngine.buyDirectItem(this.roomState, playerId, msg.item);
           this.broadcastState();
         }
         break;

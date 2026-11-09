@@ -36,7 +36,7 @@ const ANONYMOUS_AVATARS = [
   { avatar: '🟤', color: '#a16207' },
 ];
 
-const AUCTION_CATALOG: Array<{ item: MastermindItem; name: string; type: 'component' | 'tier1' | 'tier2'; basePrice: number }> = [
+const AUCTION_CATALOG: Array<{ item: MastermindItem; name: string; type: 'component' | 'tier1' | 'tier2' | 'tier3'; basePrice: number }> = [
   // Raw Components
   { item: 'chemical_solvent', name: 'Chemical Solvent', type: 'component', basePrice: 12 },
   { item: 'battery', name: 'High-Voltage Battery', type: 'component', basePrice: 15 },
@@ -60,6 +60,12 @@ const AUCTION_CATALOG: Array<{ item: MastermindItem; name: string; type: 'compon
   { item: 'half_antidote', name: 'Half-Made Antidote', type: 'tier2', basePrice: 65 },
   { item: 'half_detonator', name: 'Half-Made Detonator', type: 'tier2', basePrice: 65 },
   { item: 'master_lockpick', name: 'Master Lockpick', type: 'tier2', basePrice: 65 },
+  // Tier 3 Apex Products (ONLY THESE GO TO THE BLIND AUCTION)
+  { item: 'universal_panacea', name: 'Universal Panacea Cure', type: 'tier3', basePrice: 75 },
+  { item: 'core_detonation_rig', name: 'Core Detonation Rig', type: 'tier3', basePrice: 75 },
+  { item: 'border_aegis_shield', name: 'Border Aegis Kinetic Shield', type: 'tier3', basePrice: 70 },
+  { item: 'master_vault_dissolver', name: 'Master Vault Dissolver', type: 'tier3', basePrice: 70 },
+  { item: 'police_lockdown_grid', name: 'Shelter Lockdown Grid', type: 'tier3', basePrice: 65 },
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -171,37 +177,29 @@ export class MastermindEngine {
   }
 
   // ------------------------------------------------------------------
-  // Auction Slot Generation (1 High-Value Slot, 2-3 Components)
+  // Auction Slot Generation (ONLY Tier 3 Apex Items Auctioned!)
   // ------------------------------------------------------------------
   private static generateAuctionSlots(round: number): AuctionSlot[] {
-    const highTier = AUCTION_CATALOG.filter((i) => i.type === 'tier2');
-    const lowTier = AUCTION_CATALOG.filter((i) => i.type === 'component' || i.type === 'tier1');
-
-    const chosenHigh = highTier[Math.floor(Math.random() * highTier.length)];
-    const chosenLow1 = lowTier[Math.floor(Math.random() * lowTier.length)];
-    const chosenLow2 = lowTier[Math.floor(Math.random() * lowTier.length)];
+    const tier3Items = AUCTION_CATALOG.filter((i) => i.type === 'tier3');
+    // Rotate/shuffle tier 3 items so 2 apex items are up for secret bid each round
+    const shuffled = shuffle(tier3Items);
+    const chosenA = shuffled[0];
+    const chosenB = shuffled[1] || shuffled[0];
 
     return [
       {
-        id: `slot_high_${round}`,
-        item: chosenHigh.item,
-        name: chosenHigh.name,
-        type: chosenHigh.type,
-        basePrice: chosenHigh.basePrice,
+        id: `slot_t3_a_${round}`,
+        item: chosenA.item,
+        name: chosenA.name,
+        type: 'tier3',
+        basePrice: chosenA.basePrice,
       },
       {
-        id: `slot_low1_${round}`,
-        item: chosenLow1.item,
-        name: chosenLow1.name,
-        type: chosenLow1.type,
-        basePrice: chosenLow1.basePrice,
-      },
-      {
-        id: `slot_low2_${round}`,
-        item: chosenLow2.item,
-        name: chosenLow2.name,
-        type: chosenLow2.type,
-        basePrice: chosenLow2.basePrice,
+        id: `slot_t3_b_${round}`,
+        item: chosenB.item,
+        name: chosenB.name,
+        type: 'tier3',
+        basePrice: chosenB.basePrice,
       },
     ];
   }
@@ -253,9 +251,26 @@ export class MastermindEngine {
     return true;
   }
 
+  // Direct Market Purchase (Raw components & Tier 1/2 parts can be bought directly with coins)
+  static buyDirectItem(roomState: RoomState, playerId: string, item: MastermindItem): boolean {
+    const g = roomState.mastermindState;
+    if (!g) return false;
+    const p = g.players[playerId];
+    if (!p) return false;
+
+    // Price calculation: components cost 15c, tier 1/2 tactical cost 35c
+    const catalogEntry = AUCTION_CATALOG.find((c) => c.item === item);
+    const cost = catalogEntry ? catalogEntry.basePrice : 15;
+
+    if (p.coins < cost) return false;
+    p.coins -= cost;
+    p.inventory.push(item);
+    return true;
+  }
+
   // Legacy compat alias (from party/index.ts)
   static buyItem(roomState: RoomState, playerId: string, item: MastermindItem): boolean {
-    return MastermindEngine.craftItem(roomState, playerId, item);
+    return MastermindEngine.buyDirectItem(roomState, playerId, item);
   }
 
   // Legacy compat alias - vote tracking for round table

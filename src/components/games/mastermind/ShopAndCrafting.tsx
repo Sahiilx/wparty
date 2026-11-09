@@ -34,6 +34,7 @@ interface ShopAndCraftingProps {
   vaultBreaches?: Record<string, boolean>;
   isFortified?: boolean;
   onBidAuction: (slotId: string, bidAmount: number) => void;
+  onBuyItem: (item: MastermindItem) => void;
   onCraftItem: (resultItem: MastermindItem) => void;
   onClaimFreeCards: () => void;
 }
@@ -49,14 +50,41 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
   vaultBreaches,
   isFortified,
   onBidAuction,
+  onBuyItem,
   onCraftItem,
   onClaimFreeCards,
 }) => {
-  // State for hovered item (tooltip on card)
+  const [shopTab, setShopTab] = useState<'market' | 'auction'>('market');
   const [hoveredItem, setHoveredItem] = useState<MastermindItem | null>(null);
   const [selectedBidSlotId, setSelectedBidSlotId] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState<number>(20);
   const [submittedBidSlotId, setSubmittedBidSlotId] = useState<string | null>(null);
+  const [buyFeedback, setBuyFeedback] = useState<string | null>(null);
+
+  const DIRECT_MARKET_ITEMS: Array<{ item: MastermindItem; name: string; icon: string; price: number; desc: string; isTier1?: boolean }> = [
+    { item: 'battery', name: 'Battery', icon: '🔋', price: 15, desc: 'Power cell for electronic gear & scanners' },
+    { item: 'micro_cipher', name: 'Micro-Cipher', icon: '💾', price: 15, desc: 'Decryption chip for cracking security terminals' },
+    { item: 'chemical_solvent', name: 'Solvent', icon: '🧪', price: 12, desc: 'Corrosive chemical compound for synthesis' },
+    { item: 'volatile_powder', name: 'Volatile Powder', icon: '💥', price: 14, desc: 'Explosive precursor reagent' },
+    { item: 'steel_frame', name: 'Steel Frame', icon: '🔩', price: 15, desc: 'Heavy structural alloy for armor plating' },
+    { item: 'bio_sample', name: 'Bio-Sample', icon: '🧬', price: 14, desc: 'Medical precursor culture vial' },
+    { item: 'scrap_metal', name: 'Scrap Metal', icon: '⚙️', price: 10, desc: 'Ductile iron plating scrap' },
+    { item: 'flashlight', name: 'Flashlight', icon: '🔦', price: 10, desc: 'Illumination beam for dark sectors' },
+    { item: 'optical_scanner', name: 'Optical Scanner', icon: '🔍', price: 35, desc: 'Tier 1 device: scans room occupancy', isTier1: true },
+    { item: 'corrosive_lockpick', name: 'Corrosive Pick', icon: '🗝️', price: 35, desc: 'Tier 1 tool: melts emergency door locks', isTier1: true },
+    { item: 'improvised_kevlar', name: 'Kevlar Vest', icon: '🦺', price: 35, desc: 'Tier 1 armor: absorbs 1 physical attack', isTier1: true },
+    { item: 'tripwire_mine', name: 'Tripwire Mine', icon: '💣', price: 35, desc: 'Tier 1 trap: injures intruders', isTier1: true },
+  ];
+
+  const handleDirectBuy = (item: MastermindItem, price: number, name: string) => {
+    if (myPlayer.coins < price) {
+      alert("Insufficient coins to purchase this item!");
+      return;
+    }
+    onBuyItem(item);
+    setBuyFeedback(`Purchased ${name}!`);
+    setTimeout(() => setBuyFeedback(null), 1800);
+  };
 
   const wealthTaxMultiplier = myPlayer.wonAuctionLastRound ? 1.2 : 1.0;
   const effectiveCost = Math.round(bidAmount * wealthTaxMultiplier);
@@ -119,115 +147,198 @@ export const ShopAndCrafting: React.FC<ShopAndCraftingProps> = ({
 
       {/* Main Split Layout: Left Auction Hub | Center 3D Holographic Map | Right Inventory & Research */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
-        {/* Left Column: Blind Auction Pool (Single-Purchase Limit) */}
+        {/* Left Column: Direct Market + Secret Tier 3 Auction */}
         <div className="lg:col-span-3 flex flex-col gap-2.5 bg-slate-900/80 border border-slate-800 rounded-2xl p-3 overflow-y-auto">
-          {/* AUCTION OPEN Banner */}
-          <div className="flex items-center justify-center gap-2 py-1.5 rounded-xl bg-gradient-to-r from-cyan-950 to-slate-900 border border-cyan-400/50 animate-pulse mb-2">
-            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">🔨 AUCTION OPEN</span>
+          {/* Shop Mode Tabs */}
+          <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setShopTab('market')}
+              className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${
+                shopTab === 'market'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Direct Market
+            </button>
+            <button
+              onClick={() => setShopTab('auction')}
+              className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition flex items-center justify-center gap-1 ${
+                shopTab === 'auction'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🔨 Tier 3 Auction</span>
+            </button>
           </div>
 
-          {/* Wealth Tax badge at top of auction column if active */}
-          {myPlayer.wonAuctionLastRound && (
-            <div className="flex items-center justify-center gap-1.5 py-1 rounded-lg bg-rose-950/70 border border-rose-500/50 text-[10px] text-rose-300 font-bold">
-              <span>⚠️ WEALTH TAX +20%</span>
+          {/* Feedback message */}
+          {buyFeedback && (
+            <div className="p-2 rounded-xl bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 text-xs font-bold text-center animate-bounce">
+              ✓ {buyFeedback}
             </div>
           )}
 
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2 text-xs font-black tracking-wider text-cyan-300 uppercase">
-              <ShoppingBag className="w-4 h-4 text-cyan-400" />
-              <span>Secret Auction Slots</span>
+          {/* TAB 1: DIRECT MARKET (Raw components & Tier 1/2 parts) */}
+          {shopTab === 'market' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <span className="text-[10px] font-mono text-cyan-300 uppercase font-black">
+                  Instant Procurement
+                </span>
+                <span className="text-[9px] text-slate-500 font-mono">No Bidding Required</span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                {DIRECT_MARKET_ITEMS.map((entry) => {
+                  const canAfford = myPlayer.coins >= entry.price;
+                  return (
+                    <div
+                      key={entry.item}
+                      className="p-2 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-2 transition"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-2xl shrink-0">{entry.icon}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                            <span>{entry.name}</span>
+                            {entry.isTier1 && (
+                              <span className="text-[8px] px-1 rounded bg-purple-950 text-purple-300 border border-purple-500/40">
+                                T1
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-slate-400 line-clamp-1">
+                            {entry.desc}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDirectBuy(entry.item, entry.price, entry.name)}
+                        disabled={!canAfford}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase shrink-0 transition flex items-center gap-1 ${
+                          canAfford
+                            ? 'bg-cyan-600 hover:bg-cyan-500 text-slate-950 shadow-sm'
+                            : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                        }`}
+                      >
+                        <span>{entry.price}c</span>
+                        <span>BUY</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <span className="text-[9px] text-slate-400 font-mono">Max 1 Win / Phase</span>
-          </div>
+          )}
 
-          <div className="flex flex-col gap-2">
-            {auctionSlots.map((slot) => {
-              const itemInfo = MASTER_ITEM_CATALOG[slot.item] || {
-                name: slot.name,
-                icon: "📦",
-                description: "Secret tactical gear",
-              };
-              const isSelected = selectedBidSlotId === slot.id;
-              const isBidSubmitted = submittedBidSlotId === slot.id;
-              const tierLabel = slot.type === "tier2" ? "High-Value Asset" : "Tier 1";
-
-              return (
-                <div
-                  key={slot.id}
-                  onClick={() => !isBidSubmitted && setSelectedBidSlotId(isSelected ? null : slot.id)}
-                  className={`p-2.5 rounded-xl border flex flex-col gap-1.5 cursor-pointer transition-all ${
-                    isSelected
-                      ? "bg-cyan-950/70 border-cyan-400 shadow-md shadow-cyan-950"
-                      : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-3xl">{itemInfo.icon}</span>
-                      <div>
-                        <div className="text-sm font-black text-white truncate">{itemInfo.name}</div>
-                        <span className="text-[9px] text-purple-400 uppercase font-mono tracking-wider">
-                          {tierLabel}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-xs font-mono font-bold text-amber-400 flex items-center gap-0.5">
-                        💰 {slot.basePrice}c
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-slate-400 line-clamp-2">
-                    {itemInfo.description}
-                  </p>
-
-                  {/* Bid submitted confirmation */}
-                  {isBidSubmitted && (
-                    <div className="text-[10px] font-black text-emerald-400 flex items-center gap-1 pt-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      ✓ BID LOCKED IN
-                    </div>
-                  )}
-
-                  {/* Bid Input if selected & not yet submitted */}
-                  {isSelected && !isBidSubmitted && (
-                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="text-slate-400">Secret Bid:</span>
-                        <span className="text-amber-400 font-bold">
-                          {bidAmount}c {wealthTaxMultiplier > 1 && `(+20% = ${effectiveCost}c)`}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min={slot.basePrice}
-                          max={Math.max(slot.basePrice + 30, myPlayer.coins || 60)}
-                          value={bidAmount}
-                          onChange={(e) => setBidAmount(Number(e.target.value))}
-                          className="flex-1 accent-cyan-400 h-1.5 bg-slate-800 rounded-lg"
-                        />
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePlaceBid(slot.id);
-                          }}
-                          disabled={isBidSubmitted}
-                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 rounded-lg text-[10px] font-black text-slate-950 uppercase flex items-center gap-1"
-                        >
-                          <Lock className="w-3 h-3" />
-                          🔒 PLACE BID
-                        </button>
-                      </div>
-                    </div>
-                  )}
+          {/* TAB 2: SECRET AUCTION (TIER 3 APEX ONLY) */}
+          {shopTab === 'auction' && (
+            <div className="flex flex-col gap-2">
+              {/* Wealth Tax badge at top of auction column if active */}
+              {myPlayer.wonAuctionLastRound && (
+                <div className="flex items-center justify-center gap-1.5 py-1 rounded-lg bg-rose-950/70 border border-rose-500/50 text-[10px] text-rose-300 font-bold">
+                  <span>⚠️ WEALTH TAX +20%</span>
                 </div>
-              );
-            })}
-          </div>
+              )}
+
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-black tracking-wider text-amber-300 uppercase">
+                  <span>Apex Tier 3 Auction</span>
+                </div>
+                <span className="text-[9px] text-slate-400 font-mono">Max 1 Win / Phase</span>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {auctionSlots.map((slot) => {
+                  const itemInfo = MASTER_ITEM_CATALOG[slot.item] || {
+                    name: slot.name,
+                    icon: "👑",
+                    description: "Apex game-ending component",
+                  };
+                  const isSelected = selectedBidSlotId === slot.id;
+                  const isBidSubmitted = submittedBidSlotId === slot.id;
+
+                  return (
+                    <div
+                      key={slot.id}
+                      onClick={() => !isBidSubmitted && setSelectedBidSlotId(isSelected ? null : slot.id)}
+                      className={`p-2.5 rounded-xl border flex flex-col gap-1.5 cursor-pointer transition-all ${
+                        isSelected
+                          ? "bg-amber-950/70 border-amber-400 shadow-md shadow-amber-950"
+                          : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-3xl">{itemInfo.icon}</span>
+                          <div>
+                            <div className="text-sm font-black text-amber-300 truncate">{itemInfo.name}</div>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-200 uppercase font-mono font-bold tracking-wider border border-amber-500/40">
+                              Tier 3 Apex
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-xs font-mono font-bold text-amber-400 flex items-center gap-0.5">
+                            💰 {slot.basePrice}c
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 line-clamp-2">
+                        {itemInfo.description}
+                      </p>
+
+                      {/* Bid submitted confirmation */}
+                      {isBidSubmitted && (
+                        <div className="text-[10px] font-black text-emerald-400 flex items-center gap-1 pt-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          ✓ SECRET BID LOCKED IN
+                        </div>
+                      )}
+
+                      {/* Bid Input if selected & not yet submitted */}
+                      {isSelected && !isBidSubmitted && (
+                        <div className="pt-2 border-t border-slate-800 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between text-[10px] font-mono">
+                            <span className="text-slate-400">Secret Bid:</span>
+                            <span className="text-amber-400 font-bold">
+                              {bidAmount}c {wealthTaxMultiplier > 1 && `(+20% = ${effectiveCost}c)`}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min={slot.basePrice}
+                              max={Math.max(slot.basePrice + 40, myPlayer.coins || 80)}
+                              value={bidAmount}
+                              onChange={(e) => setBidAmount(Number(e.target.value))}
+                              className="flex-1 accent-amber-400 h-1.5 bg-slate-800 rounded-lg"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePlaceBid(slot.id);
+                              }}
+                              disabled={isBidSubmitted}
+                              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 rounded-lg text-[10px] font-black text-slate-950 uppercase flex items-center gap-1"
+                            >
+                              <Lock className="w-3 h-3" />
+                              🔒 BID
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Center Column: 3D Holographic Facility Map */}

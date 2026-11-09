@@ -104,15 +104,22 @@ export const PowerSplitMiniGame: React.FC<PowerSplitProps> = ({ onComplete, init
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-amber-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
-      {/* How-To Guide Panel */}
+    <div className="relative flex flex-col md:flex-row items-start justify-center gap-4 max-w-4xl mx-auto w-full">
+      {/* SEPARATE LEFT How-To Guide Panel */}
       {showGuide && (
-        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
-            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+        <div className="w-full md:w-72 bg-slate-900/95 border border-amber-500/40 rounded-3xl p-4 shadow-2xl backdrop-blur-md flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
+            <span className="text-xs font-black text-amber-300 uppercase tracking-widest flex items-center gap-1.5">
+              <span>📋</span> HOW TO PLAY
+            </span>
+            <button
+              onClick={() => setShowGuide(false)}
+              className="w-6 h-6 rounded-full bg-slate-800 hover:bg-rose-900/80 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold transition"
+            >
+              ✕
+            </button>
           </div>
-          <div className="flex flex-col gap-2 text-xs text-slate-300">
+          <div className="flex flex-col gap-2.5 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-lg">⚡</span><div><div className="font-bold text-white">Split your 100 MW pool</div><div className="text-slate-400">You have 100 total MegaWatts for the whole match.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">🎯</span><div><div className="font-bold text-white">Allocate to 3 Nodes</div><div className="text-slate-400">Each round has Node A/B/C with point values. Slide to allocate MW.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">🏆</span><div><div className="font-bold text-white">Outbid rivals to win nodes</div><div className="text-slate-400">The player who put the most MW on a node wins its full points.</div></div></div>
@@ -121,10 +128,17 @@ export const PowerSplitMiniGame: React.FC<PowerSplitProps> = ({ onComplete, init
         </div>
       )}
 
-      {/* ? Button when guide is hidden */}
-      {!showGuide && (
-        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
-      )}
+      {/* Main Mini-Game Canvas */}
+      <div className="relative flex-1 flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-amber-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white w-full">
+        {/* ? Button when guide is hidden */}
+        {!showGuide && (
+          <button
+            onClick={() => setShowGuide(true)}
+            className="absolute top-3 left-3 px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-500/50 hover:bg-amber-900 text-amber-300 font-black text-xs z-20 flex items-center gap-1 shadow-lg"
+          >
+            <span>?</span> HOW TO PLAY
+          </button>
+        )}
 
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-amber-500/20 pb-4 mb-4">
@@ -259,6 +273,7 @@ export const PowerSplitMiniGame: React.FC<PowerSplitProps> = ({ onComplete, init
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 };
@@ -367,15 +382,22 @@ export const CyberCipherMiniGame: React.FC<CyberCipherProps> = ({ onComplete }) 
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-cyan-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
-      {/* How-To Guide Panel */}
+    <div className="relative flex flex-col md:flex-row items-start justify-center gap-4 max-w-4xl mx-auto w-full">
+      {/* SEPARATE LEFT How-To Guide Panel */}
       {showGuide && (
-        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
-            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+        <div className="w-full md:w-72 bg-slate-900/95 border border-cyan-500/40 rounded-3xl p-4 shadow-2xl backdrop-blur-md flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between border-b border-cyan-500/30 pb-2">
+            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest flex items-center gap-1.5">
+              <span>📋</span> HOW TO PLAY
+            </span>
+            <button
+              onClick={() => setShowGuide(false)}
+              className="w-6 h-6 rounded-full bg-slate-800 hover:bg-rose-900/80 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold transition"
+            >
+              ✕
+            </button>
           </div>
-          <div className="flex flex-col gap-2 text-xs text-slate-300">
+          <div className="flex flex-col gap-2.5 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-lg">🔤</span><div><div className="font-bold text-white">Spin the letter wheels</div><div className="text-slate-400">Each wheel has letters. Use ▲/▼ buttons to scroll each wheel.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">🎯</span><div><div className="font-bold text-white">Form the target word</div><div className="text-slate-400">Align the highlighted center bar letters to spell the secret word.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">✅</span><div><div className="font-bold text-white">Submit to claim coins</div><div className="text-slate-400">Each solved word awards +15 to +75 coins based on difficulty.</div></div></div>
@@ -384,10 +406,17 @@ export const CyberCipherMiniGame: React.FC<CyberCipherProps> = ({ onComplete }) 
         </div>
       )}
 
-      {/* ? Button when guide is hidden */}
-      {!showGuide && (
-        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
-      )}
+      {/* Main Mini-Game Canvas */}
+      <div className="relative flex-1 flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-cyan-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white w-full">
+        {/* ? Button when guide is hidden */}
+        {!showGuide && (
+          <button
+            onClick={() => setShowGuide(true)}
+            className="absolute top-3 left-3 px-2.5 py-1 rounded-xl bg-cyan-950/80 border border-cyan-500/50 hover:bg-cyan-900 text-cyan-300 font-black text-xs z-20 flex items-center gap-1 shadow-lg"
+          >
+            <span>?</span> HOW TO PLAY
+          </button>
+        )}
 
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-cyan-500/20 pb-4 mb-4">
@@ -467,6 +496,7 @@ export const CyberCipherMiniGame: React.FC<CyberCipherProps> = ({ onComplete }) 
         <Unlock className="w-4 h-4" />
         <span>Transmit Decrypted Cipher</span>
       </button>
+      </div>
     </div>
   );
 };
@@ -569,15 +599,22 @@ export const LeveragePoolMiniGame: React.FC<LeveragePoolProps> = ({ onComplete }
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-purple-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white max-w-2xl mx-auto w-full">
-      {/* How-To Guide Panel */}
+    <div className="relative flex flex-col md:flex-row items-start justify-center gap-4 max-w-4xl mx-auto w-full">
+      {/* SEPARATE LEFT How-To Guide Panel */}
       {showGuide && (
-        <div className="absolute right-0 top-0 w-72 bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 z-30 shadow-2xl backdrop-blur-md flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">How To Play</span>
-            <button onClick={() => setShowGuide(false)} className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold">✕</button>
+        <div className="w-full md:w-72 bg-slate-900/95 border border-purple-500/40 rounded-3xl p-4 shadow-2xl backdrop-blur-md flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between border-b border-purple-500/30 pb-2">
+            <span className="text-xs font-black text-purple-300 uppercase tracking-widest flex items-center gap-1.5">
+              <span>📋</span> HOW TO PLAY
+            </span>
+            <button
+              onClick={() => setShowGuide(false)}
+              className="w-6 h-6 rounded-full bg-slate-800 hover:bg-rose-900/80 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold transition"
+            >
+              ✕
+            </button>
           </div>
-          <div className="flex flex-col gap-2 text-xs text-slate-300">
+          <div className="flex flex-col gap-2.5 text-xs text-slate-300">
             <div className="flex items-start gap-2"><span className="text-lg">🎲</span><div><div className="font-bold text-white">Secret bid 1-100</div><div className="text-slate-400">Pick a number between 1 and 100 without others seeing it.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">📊</span><div><div className="font-bold text-white">Hit the target %</div><div className="text-slate-400">The target is 60-95% of the entire table's average bid. Land in the zone to win.</div></div></div>
             <div className="flex items-start gap-2"><span className="text-lg">🔥</span><div><div className="font-bold text-white">Decade lockout rule</div><div className="text-slate-400">If you bid in a decade (e.g. 70-79), that entire range is BURNED for future rounds.</div></div></div>
@@ -586,10 +623,17 @@ export const LeveragePoolMiniGame: React.FC<LeveragePoolProps> = ({ onComplete }
         </div>
       )}
 
-      {/* ? Button when guide is hidden */}
-      {!showGuide && (
-        <button onClick={() => setShowGuide(true)} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-cyan-900/80 border border-cyan-500/40 hover:bg-cyan-800 text-cyan-300 font-black text-sm z-20 flex items-center justify-center shadow-lg">?</button>
-      )}
+      {/* Main Mini-Game Canvas */}
+      <div className="relative flex-1 flex flex-col items-center justify-between p-6 bg-slate-950/90 border border-purple-500/30 rounded-3xl backdrop-blur-xl shadow-2xl text-white w-full">
+        {/* ? Button when guide is hidden */}
+        {!showGuide && (
+          <button
+            onClick={() => setShowGuide(true)}
+            className="absolute top-3 left-3 px-2.5 py-1 rounded-xl bg-purple-950/80 border border-purple-500/50 hover:bg-purple-900 text-purple-300 font-black text-xs z-20 flex items-center gap-1 shadow-lg"
+          >
+            <span>?</span> HOW TO PLAY
+          </button>
+        )}
 
       {/* Header Bar */}
       <div className="w-full flex items-center justify-between border-b border-purple-500/20 pb-4 mb-4">
@@ -691,6 +735,7 @@ export const LeveragePoolMiniGame: React.FC<LeveragePoolProps> = ({ onComplete }
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 };

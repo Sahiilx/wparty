@@ -330,7 +330,7 @@ export interface AuctionSlot {
   id: string;
   item: MastermindItem;
   name: string;
-  type: 'component' | 'tier1' | 'tier2';
+  type: 'component' | 'tier1' | 'tier2' | 'tier3';
   basePrice: number;
   highestBid?: number;
   highestBidderId?: string;

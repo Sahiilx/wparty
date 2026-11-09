@@ -26,13 +26,49 @@ import { OperativeToken } from "./OakhavenMap3D";
 import { OAKHAVEN_SECTORS } from "./oakhavenMapData";
 
 // ============================================================
-// A. UI THEMES SYSTEM
+// A. UI THEMES SYSTEM (FULL REPAINT)
 // ============================================================
 type MastermindTheme = "cyberpunk" | "dieselpunk" | "classic";
 const THEMES = {
-  cyberpunk:  { primary: "#38bdf8", accent: "#f43f5e",  bg: "#060913",  surface: "#0f172a", border: "#1e3a5f",   glow: "#0ea5e9" },
-  dieselpunk: { primary: "#f97316", accent: "#eab308",  bg: "#1a0f00",  surface: "#2d1b00", border: "#7c3800",   glow: "#f97316" },
-  classic:    { primary: "#8b5cf6", accent: "#a855f7",  bg: "#0d0d1a",  surface: "#1a1a2e", border: "#2d2d5e",   glow: "#8b5cf6" },
+  cyberpunk: {
+    name: "Cyberpunk",
+    icon: "🔵",
+    primary: "#00f0ff",
+    accent: "#f43f5e",
+    bg: "#04060d",
+    surface: "#09121f",
+    border: "#0e3a5f",
+    glow: "#00f0ff",
+    badgeBg: "rgba(0, 240, 255, 0.15)",
+    textGlow: "0 0 15px rgba(0, 240, 255, 0.4)",
+    gridPattern: "rgba(0, 240, 255, 0.04)",
+  },
+  dieselpunk: {
+    name: "Dieselpunk",
+    icon: "🟠",
+    primary: "#f59e0b",
+    accent: "#ea580c",
+    bg: "#100a04",
+    surface: "#1f140a",
+    border: "#78350f",
+    glow: "#f59e0b",
+    badgeBg: "rgba(245, 158, 11, 0.15)",
+    textGlow: "0 0 15px rgba(245, 158, 11, 0.4)",
+    gridPattern: "rgba(245, 158, 11, 0.04)",
+  },
+  classic: {
+    name: "Obsidian",
+    icon: "🟣",
+    primary: "#a855f7",
+    accent: "#ec4899",
+    bg: "#07040d",
+    surface: "#140a24",
+    border: "#4c1d95",
+    glow: "#a855f7",
+    badgeBg: "rgba(168, 85, 247, 0.15)",
+    textGlow: "0 0 15px rgba(168, 85, 247, 0.4)",
+    gridPattern: "rgba(168, 85, 247, 0.04)",
+  },
 };
 
 interface MastermindGameProps {
@@ -220,53 +256,65 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   }
 
   // =========================================================================
-  // B. ROLE REVEAL PHASE — Card/Envelope Fan Reveal
+  // B. ROLE REVEAL PHASE — Single Choice Card Selection (Locked once clicked)
   // =========================================================================
   if (phase === "role_reveal") {
-    const cardCount = Math.min(allPlayers.length, 8);
-    const myCardIdx = (() => {
-      const idx = allPlayers.findIndex((p) => p.id === myId);
-      return idx === -1 ? 0 : idx;
-    })();
-
-    const isMyCardFlipped = flippedIdx === myCardIdx;
+    const cardCount = Math.max(3, Math.min(allPlayers.length, 8));
+    const isRevealed = flippedIdx !== null;
     const roleColor = myPlayer ? ROLE_COLORS[myPlayer.role] : t.primary;
+
+    const handleSelectCard = (index: number) => {
+      if (flippedIdx !== null) return; // Player can only select ONE card and cannot change it!
+      setFlippedIdx(index);
+    };
 
     return (
       <div
         className="flex-1 flex flex-col items-center justify-center text-white select-none relative overflow-hidden"
         style={{ backgroundColor: t.bg }}
       >
-        {/* Full-screen overlay heading */}
+        {/* Full-screen background ambiance */}
         <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at center, ${t.glow}18 0%, transparent 70%)` }} />
 
         <div className="relative z-10 flex flex-col items-center gap-8 px-4 max-w-3xl w-full">
           {/* Title */}
-          <div
-            className="text-3xl font-black tracking-[0.4em] uppercase"
-            style={{ color: t.primary, textShadow: `0 0 30px ${t.glow}` }}
-          >
-            Choose Your Fate
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <div
+              className="text-3xl font-black tracking-[0.4em] uppercase"
+              style={{ color: t.primary, textShadow: t.textGlow }}
+            >
+              {isRevealed ? "ROLE REVEALED" : "CHOOSE YOUR FATE"}
+            </div>
+            <p className="text-xs font-mono text-slate-400">
+              {isRevealed
+                ? "Your secret operative clearance is confirmed. Do not expose your identity."
+                : "Select 1 encrypted card to uncover your classified assignment. Choice cannot be changed."}
+            </p>
           </div>
 
           {/* Card Fan Row */}
-          <div className="flex items-center justify-center gap-3 flex-wrap">
+          <div className="flex items-center justify-center gap-3.5 flex-wrap">
             {Array.from({ length: cardCount }, (_, i) => {
               const isFlipped = flippedIdx === i;
-              const isMyCard = i === myCardIdx;
 
               return (
                 <div
                   key={i}
-                  onClick={() => setFlippedIdx(i)}
-                  style={{ perspective: "600px", cursor: "pointer" }}
-                  className="relative"
+                  onClick={() => handleSelectCard(i)}
+                  style={{
+                    perspective: "600px",
+                    cursor: isRevealed ? (isFlipped ? "default" : "not-allowed") : "pointer",
+                    opacity: isRevealed && !isFlipped ? 0.35 : 1,
+                    transform: isRevealed && isFlipped ? "scale(1.08)" : "scale(1)",
+                    transition: "transform 0.4s ease, opacity 0.4s ease",
+                  }}
+                  className="relative active:scale-95 transition-transform"
                 >
                   {/* Inner flipper */}
                   <div
                     style={{
-                      width: "90px",
-                      height: "130px",
+                      width: "95px",
+                      height: "135px",
                       position: "relative",
                       transformStyle: "preserve-3d",
                       transition: "transform 0.65s cubic-bezier(0.4,0,0.2,1)",
@@ -283,7 +331,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                         borderRadius: "14px",
                         border: `2px solid ${t.primary}`,
                         backgroundColor: t.surface,
-                        boxShadow: `0 0 18px ${t.glow}55`,
+                        boxShadow: `0 0 20px ${t.glow}44`,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
@@ -291,21 +339,20 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                         gap: "6px",
                       }}
                     >
-                      <span style={{ fontSize: "1.8rem", opacity: 0.85 }}>❓</span>
+                      <span style={{ fontSize: "1.9rem", opacity: 0.85 }}>🃏</span>
                       <div
                         style={{
                           fontSize: "10px",
                           fontFamily: "monospace",
                           color: t.primary,
-                          letterSpacing: "0.1em",
-                          fontWeight: 700,
+                          letterSpacing: "0.15em",
+                          fontWeight: 800,
                           textAlign: "center",
                           padding: "0 6px",
                         }}
                       >
-                        CLASSIFIED
+                        ENCRYPTED
                       </div>
-                      {/* decorative pattern */}
                       <div style={{ position: "absolute", inset: "6px", border: `1px solid ${t.primary}33`, borderRadius: "10px", pointerEvents: "none" }} />
                     </div>
 
@@ -318,9 +365,9 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                         WebkitBackfaceVisibility: "hidden",
                         transform: "rotateY(180deg)",
                         borderRadius: "14px",
-                        border: `2px solid ${isMyCard ? roleColor : "#475569"}`,
-                        backgroundColor: isMyCard ? roleColor + "22" : t.surface,
-                        boxShadow: isMyCard ? `0 0 24px ${roleColor}66` : "none",
+                        border: `2px solid ${roleColor}`,
+                        backgroundColor: t.surface,
+                        boxShadow: `0 0 30px ${roleColor}55`,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
@@ -329,12 +376,12 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                         padding: "8px",
                       }}
                     >
-                      {isMyCard && myPlayer ? (
+                      {isFlipped && myPlayer ? (
                         <>
-                          <span style={{ fontSize: "1.8rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+                          <span style={{ fontSize: "2rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
                           <div
                             style={{
-                              fontSize: "11px",
+                              fontSize: "12px",
                               fontFamily: "monospace",
                               fontWeight: 900,
                               color: roleColor,
@@ -357,7 +404,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                               textAlign: "center",
                             }}
                           >
-                            OPERATIVE
+                            CLASSIFIED
                           </div>
                         </>
                       )}
@@ -368,21 +415,21 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
             })}
           </div>
 
-          {/* Role reveal detail panel — shown after my card is flipped */}
-          {isMyCardFlipped && myPlayer && (
+          {/* Role reveal detail panel — shown after clicked card flips */}
+          {isRevealed && myPlayer && (
             <div
-              className="flex flex-col items-center gap-3 p-6 rounded-3xl"
+              className="flex flex-col items-center gap-3 p-6 rounded-3xl animate-fade-in"
               style={{
-                border: `1.5px solid ${roleColor}66`,
-                backgroundColor: roleColor + "12",
-                boxShadow: `0 0 40px ${roleColor}22`,
-                minWidth: "260px",
+                border: `2px solid ${roleColor}88`,
+                backgroundColor: t.surface,
+                boxShadow: `0 0 50px ${roleColor}33`,
+                minWidth: "280px",
               }}
             >
-              <span style={{ fontSize: "3rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+              <span style={{ fontSize: "3.5rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
               <span
                 style={{
-                  fontSize: "1.5rem",
+                  fontSize: "1.75rem",
                   fontWeight: 900,
                   color: roleColor,
                   textTransform: "capitalize",
@@ -391,15 +438,17 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               >
                 {myPlayer.role}
               </span>
-              <span className="text-sm font-mono" style={{ color: t.accent }}>
-                {myPlayer.team === "town" && "🏛️ You are part of the Town. Protect the shelter!"}
-                {myPlayer.team === "syndicate" && "💀 You are the Syndicate. Chaos is your ally!"}
-                {myPlayer.team === "neutral" && "🃏 You are a Wildcard. Write your own fate!"}
+              <span className="text-sm font-mono text-center max-w-md" style={{ color: t.primary }}>
+                {myPlayer.team === "town" && "🏛️ You are part of the Town. Secure the facility & synthesize the Panacea!"}
+                {myPlayer.team === "syndicate" && "💀 You are the Syndicate. Sabotage the vaults & detonate the core!"}
+                {myPlayer.team === "neutral" && "🃏 You are a Wildcard. Manipulate both sides to achieve victory!"}
               </span>
-              <div className="flex flex-col items-center gap-1 mt-2">
+              <div className="flex items-center gap-3 mt-2 px-4 py-2 rounded-2xl bg-slate-950/80 border border-slate-800">
                 <span className="text-2xl">{myPlayer.avatar}</span>
-                <span className="font-mono text-sm font-bold text-slate-300">{myPlayer.name}</span>
-                <span className="text-xs text-slate-500">Your anonymous identity this match</span>
+                <div className="flex flex-col">
+                  <span className="font-mono text-xs font-bold text-slate-200">{myPlayer.name}</span>
+                  <span className="text-[10px] text-slate-500">Your anonymous alias this match</span>
+                </div>
               </div>
             </div>
           )}
@@ -476,6 +525,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
             vaultBreaches={g.vaultBreaches}
             isFortified={g.domeFortified}
             onBidAuction={onBidAuction || (() => {})}
+            onBuyItem={onBuyItem}
             onCraftItem={onCraftItem || onBuyItem}
             onClaimFreeCards={onClaimFreeCards || (() => {})}
           />
@@ -507,6 +557,14 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
       className="flex-1 flex flex-col h-full text-white overflow-hidden select-none relative"
       style={{ backgroundColor: t.bg }}
     >
+      {/* Sci-Fi Grid Backdrop */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `linear-gradient(to right, ${t.gridPattern} 1px, transparent 1px), linear-gradient(to bottom, ${t.gridPattern} 1px, transparent 1px)`,
+          backgroundSize: "28px 28px",
+        }}
+      />
       {/* C. PHASE TRANSITION ANNOUNCE OVERLAY */}
       {showPhaseAnnounce && (
         <>
@@ -518,26 +576,39 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               100% { opacity: 0; transform: scale(0.3); }
             }
           `}</style>
-          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md pointer-events-none">
             <div
               style={{
                 animation: "phaseIn 2.8s ease forwards",
-                color: t.primary,
-                textAlign: "center",
+                borderColor: t.primary,
+                boxShadow: `0 0 60px ${t.glow}55, inset 0 0 40px ${t.glow}22`,
+                backgroundColor: t.surface,
               }}
+              className="p-8 rounded-3xl border-2 flex flex-col items-center gap-3 max-w-xl w-full mx-4 shadow-2xl text-center"
             >
               <div
                 style={{
-                  fontSize: "3rem",
+                  fontSize: "3.2rem",
                   fontWeight: 900,
-                  letterSpacing: "0.3em",
-                  textShadow: `0 0 40px ${t.glow}`,
+                  letterSpacing: "0.25em",
+                  color: t.primary,
+                  textShadow: t.textGlow,
                 }}
               >
-                {announceText.split("•")[0]}
+                {announceText.split("•")[0]?.trim()}
               </div>
-              <div style={{ fontSize: "1.5rem", color: t.accent }}>
-                {announceText.split("•")[1]}
+              <div
+                style={{
+                  fontSize: "1.6rem",
+                  fontWeight: 800,
+                  color: t.accent,
+                  letterSpacing: "0.15em",
+                }}
+              >
+                {announceText.split("•")[1]?.trim()}
+              </div>
+              <div className="text-[11px] font-mono tracking-widest text-slate-400 mt-2 uppercase">
+                [ PROTOCOL SYNCHRONIZATION ACTIVE ]
               </div>
             </div>
           </div>

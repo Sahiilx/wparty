@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OAKHAVEN_SECTORS, SectorDef } from "./oakhavenMapData";
+import { Compass, Crosshair, Eye, Zap, Target } from "lucide-react";
 
 export interface OperativeToken {
   id: string;
@@ -11,7 +12,7 @@ export interface OperativeToken {
   color: string;
   sectorId: string;
   isMe?: boolean;
-  activity?: string; // e.g., 'breaching', 'healing', 'investigating'
+  activity?: string;
 }
 
 interface OakhavenMap3DProps {
@@ -35,14 +36,69 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const sectorMeshesRef = useRef<Record<string, THREE.Mesh>>({});
+  const roomMeshesRef = useRef<Record<string, { mesh: THREE.Mesh; line: THREE.LineSegments; floor: THREE.Mesh }>>({});
+  const labelsGroupRef = useRef<THREE.Group | null>(null);
+  const vfxGroupRef = useRef<THREE.Group | null>(null);
   const tokenMeshesRef = useRef<THREE.Group[]>([]);
   const pingsGroupRef = useRef<THREE.Group | null>(null);
 
-  // Orbit controls state
-  const isDraggingRef = useRef(false);
-  const previousMousePositionRef = useRef({ x: 0, y: 0 });
-  const cameraAngleRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3, radius: 68 });
+  const [cameraPreset, setCameraPreset] = useState<"ISOMETRIC" | "TOP" | "FRONT">("ISOMETRIC");
+  const [autoRotateCamera, setAutoRotateCamera] = useState(false);
+
+  // Camera Orbit controls state
+  const controlsRef = useRef({
+    isDragging: false,
+    previousMousePosition: { x: 0, y: 0 },
+    rotX: 0.65,
+    rotY: -0.5,
+    zoom: 1.0,
+  });
+
+  // Create High-Density Billboard Telemetry Card (From Visual Reference)
+  const createLabelTexture = (text: string, icon: string, status: string, occ: string, colorHex: string) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 380;
+    canvas.height = 100;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return new THREE.Texture();
+
+    ctx.fillStyle = "rgba(4, 6, 13, 0.92)";
+    ctx.beginPath();
+    ctx.roundRect(8, 8, 364, 84, 12);
+    ctx.fill();
+
+    ctx.strokeStyle = colorHex || "#00f0ff";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = "bold 17px monospace";
+    ctx.fillStyle = "#f8fafc";
+    ctx.textAlign = "left";
+    ctx.shadowColor = "#06b6d4";
+    ctx.shadowBlur = 8;
+    ctx.fillText(`${icon} ${text.toUpperCase()}`, 20, 38);
+
+    ctx.fillStyle = "rgba(6, 182, 212, 0.2)";
+    ctx.beginPath();
+    ctx.roundRect(20, 52, 140, 26, 6);
+    ctx.fill();
+    ctx.strokeStyle = "#06b6d4";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = "bold 11px monospace";
+    ctx.fillStyle = "#00f0ff";
+    ctx.shadowBlur = 0;
+    ctx.fillText(`[${status}]`, 28, 69);
+
+    ctx.font = "11px monospace";
+    ctx.fillStyle = "#f59e0b";
+    ctx.fillText(occ, 175, 69);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  };
 
   useEffect(() => {
     const container = mountRef.current;
@@ -51,10 +107,10 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 500;
 
-    // 1. Scene Setup
+    // 1. Scene Setup (Void atmosphere, NO grid base)
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060913); // Cyberpunk deep space void
-    scene.fog = new THREE.FogExp2(0x060913, 0.009);
+    scene.background = new THREE.Color(0x04060d);
+    scene.fog = new THREE.FogExp2(0x04060d, 0.012);
     sceneRef.current = scene;
 
     // 2. Camera Setup
@@ -62,11 +118,11 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     cameraRef.current = camera;
 
     const updateCameraPos = () => {
-      const { theta, phi, radius } = cameraAngleRef.current;
-      camera.position.x = radius * Math.sin(phi) * Math.sin(theta);
-      camera.position.y = radius * Math.cos(phi);
-      camera.position.z = radius * Math.sin(phi) * Math.cos(theta);
-      camera.lookAt(0, 0, 0);
+      const radius = 64 * controlsRef.current.zoom;
+      camera.position.x = radius * Math.sin(controlsRef.current.rotY) * Math.cos(controlsRef.current.rotX);
+      camera.position.y = radius * Math.sin(controlsRef.current.rotX);
+      camera.position.z = radius * Math.cos(controlsRef.current.rotY) * Math.cos(controlsRef.current.rotX);
+      camera.lookAt(0, 1.2, 0);
     };
     updateCameraPos();
 
@@ -75,336 +131,254 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.25;
     rendererRef.current = renderer;
 
     container.innerHTML = "";
     container.appendChild(renderer.domElement);
 
-    // 4. Lighting
-    const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.6);
+    // 4. Lighting (Clean sci-fi point + ambient lights)
+    const ambientLight = new THREE.AmbientLight(0x1a365d, 2.0);
     scene.add(ambientLight);
 
-    const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    mainLight.position.set(30, 50, 30);
-    scene.add(mainLight);
+    const cyanLight = new THREE.PointLight(0x00f0ff, 3.8, 120);
+    cyanLight.position.set(-15, 30, 20);
+    scene.add(cyanLight);
 
-    const blueSubLight = new THREE.DirectionalLight(0x0284c7, 0.8);
-    blueSubLight.position.set(-30, 40, -30);
-    scene.add(blueSubLight);
+    const amberLight = new THREE.PointLight(0xf59e0b, 2.5, 100);
+    amberLight.position.set(15, 25, -20);
+    scene.add(amberLight);
 
-    // 5. Holographic Floor Grid
-    const gridHelper = new THREE.GridHelper(90, 45, 0x0ea5e9, 0x1e293b);
-    gridHelper.position.y = -0.05;
-    scene.add(gridHelper);
-
-    // 5b. Holographic Base Platform disc
-    const baseGeo = new THREE.CylinderGeometry(38, 38, 0.15, 64);
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x0ea5e9),
-      emissive: new THREE.Color(0x0ea5e9),
-      emissiveIntensity: 0.3,
+    // 5. UNIFIED SOLID EXTERIOR FOUNDATION ENVELOPE (From reference code - replaces ugly grid!)
+    const foundationGeo = new THREE.BoxGeometry(68, 0.25, 68);
+    const foundationMat = new THREE.MeshPhongMaterial({
+      color: 0x071526,
+      opacity: 0.95,
       transparent: true,
-      opacity: 0.15,
-      roughness: 0.1,
-      metalness: 0.9,
+      shininess: 80,
     });
-    const basePlatform = new THREE.Mesh(baseGeo, baseMat);
-    basePlatform.position.y = -0.1;
-    scene.add(basePlatform);
+    const foundationMesh = new THREE.Mesh(foundationGeo, foundationMat);
+    foundationMesh.position.set(0, 0.1, 0);
+    scene.add(foundationMesh);
 
-    // Glowing ring edge
-    const ringEdgeGeo = new THREE.TorusGeometry(38, 0.4, 8, 64);
-    const ringEdgeMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x38bdf8),
-      emissive: new THREE.Color(0x38bdf8),
-      emissiveIntensity: 1.5,
-    });
-    const ringEdge = new THREE.Mesh(ringEdgeGeo, ringEdgeMat);
-    ringEdge.rotation.x = Math.PI / 2;
-    ringEdge.position.y = 0.0;
-    scene.add(ringEdge);
+    // Foundation Outer Edge Glowing Trim
+    const foundationEdge = new THREE.EdgesGeometry(foundationGeo);
+    const foundationLine = new THREE.LineSegments(
+      foundationEdge,
+      new THREE.LineBasicMaterial({ color: 0x00f0ff, linewidth: 2 })
+    );
+    foundationLine.position.set(0, 0.1, 0);
+    scene.add(foundationLine);
 
-    // 5c. Animated scan plane
-    const scanGeo = new THREE.PlaneGeometry(80, 80);
-    const scanMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(0x38bdf8),
-      transparent: true,
-      opacity: 0.04,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    const scanMesh = new THREE.Mesh(scanGeo, scanMat);
-    scanMesh.rotation.x = Math.PI / 2;
-    scanMesh.position.y = 0;
-    scene.add(scanMesh);
+    // Groups
+    const labelsGroup = new THREE.Group();
+    labelsGroupRef.current = labelsGroup;
+    scene.add(labelsGroup);
 
-    // 6. Build Shelter Architecture from Oakhaven Layout
-    const sectorMeshes: Record<string, THREE.Mesh> = {};
+    const vfxGroup = new THREE.Group();
+    vfxGroupRef.current = vfxGroup;
+    scene.add(vfxGroup);
+
+    const pingsGroup = new THREE.Group();
+    pingsGroupRef.current = pingsGroup;
+    scene.add(pingsGroup);
+
+    // 6. BUILD OAKHAVEN ROOM COMPARTMENTS & ARCHITECTURAL STRUCTURE
+    const roomMeshes: Record<string, { mesh: THREE.Mesh; line: THREE.LineSegments; floor: THREE.Mesh }> = {};
 
     OAKHAVEN_SECTORS.forEach((sec) => {
       const isDome = sec.shape === "circle";
-      const wallThickness = 0.7; // Thick physical walls as requested!
-      const wallHeight = 3.5;
+      const roomGroup = new THREE.Group();
+      roomGroup.position.set(sec.x, 0, sec.z);
 
-      // Sector Floor
-      let floorGeo: THREE.BufferGeometry;
+      const height = sec.type === "corridor" ? 2.4 : 3.4;
+      let geom: THREE.BufferGeometry;
+
       if (isDome) {
-        floorGeo = new THREE.CylinderGeometry(sec.radius || 5, sec.radius || 5, 0.2, 32);
+        geom = new THREE.CylinderGeometry(sec.radius || 6, sec.radius || 6, height, 32);
       } else if (sec.shape === "pentagon") {
-        floorGeo = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, 0.2, 5);
+        geom = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, height, 5);
       } else if (sec.shape === "octagon") {
-        floorGeo = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, 0.2, 8);
+        geom = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, height, 8);
       } else {
-        floorGeo = new THREE.BoxGeometry(sec.width, 0.2, sec.depth);
+        geom = new THREE.BoxGeometry(sec.width, height, sec.depth);
       }
 
-      const floorMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(sec.floorColor),
-        roughness: 0.4,
-        metalness: 0.6,
+      // Translucent Glassmorphic Room Wall
+      const wallMat = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(sec.wallColor),
+        transparent: true,
+        opacity: 0.24,
+        shininess: 90,
+        side: THREE.DoubleSide,
       });
 
+      const wallMesh = new THREE.Mesh(geom, wallMat);
+      wallMesh.position.y = height / 2;
+      wallMesh.userData = { sectorId: sec.id };
+      roomGroup.add(wallMesh);
+
+      // Neon Line Edges for Partition Wall Frames
+      const edgesGeo = new THREE.EdgesGeometry(geom);
+      const edgesMat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(sec.wallColor),
+        linewidth: 1.5,
+      });
+      const lineSegments = new THREE.LineSegments(edgesGeo, edgesMat);
+      lineSegments.position.y = height / 2;
+      roomGroup.add(lineSegments);
+
+      // Shared Floor Tile Panel
+      let floorGeo: THREE.BufferGeometry;
+      if (isDome) {
+        floorGeo = new THREE.CircleGeometry((sec.radius || 6) - 0.1, 32);
+      } else {
+        floorGeo = new THREE.PlaneGeometry(sec.width - 0.15, sec.depth - 0.15);
+      }
+      const floorMat = new THREE.MeshBasicMaterial({
+        color: 0x0a2540,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+      });
       const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-      floorMesh.position.set(sec.x, 0, sec.z);
-      floorMesh.userData = { sectorId: sec.id, isFloor: true };
-      scene.add(floorMesh);
-      sectorMeshes[sec.id] = floorMesh;
+      floorMesh.rotation.x = Math.PI / 2;
+      floorMesh.position.y = 0.24;
+      roomGroup.add(floorMesh);
 
-      // Sector Thick Walls
-      if (sec.type !== "corridor") {
-        if (isDome) {
-          // Circular Wall Tube — with emissive glow
-          const wallGeo = new THREE.CylinderGeometry(
-            sec.radius || 5,
-            sec.radius || 5,
-            wallHeight,
-            32,
-            1,
-            true
-          );
-          const wallMat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(sec.wallColor),
-            emissive: new THREE.Color(sec.wallColor),
-            emissiveIntensity: 0.15,
-            roughness: 0.2,
-            metalness: 0.8,
-            side: THREE.DoubleSide,
-          });
-          const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-          wallMesh.position.set(sec.x, wallHeight / 2, sec.z);
-          scene.add(wallMesh);
-        } else {
-          // Box Perimeter Walls
-          const halfW = sec.width / 2;
-          const halfD = sec.depth / 2;
+      scene.add(roomGroup);
 
-          // 4 Thick Wall Slabs — with emissive glow
-          const createWallSlab = (w: number, d: number, px: number, pz: number) => {
-            const slabGeo = new THREE.BoxGeometry(w, wallHeight, d);
-            const slabMat = new THREE.MeshStandardMaterial({
-              color: new THREE.Color(sec.wallColor),
-              emissive: new THREE.Color(sec.wallColor),
-              emissiveIntensity: 0.12,
-              roughness: 0.3,
-              metalness: 0.7,
-            });
-            const slab = new THREE.Mesh(slabGeo, slabMat);
-            slab.position.set(sec.x + px, wallHeight / 2, sec.z + pz);
-            scene.add(slab);
-          };
+      // Billboarded Holographic Telemetry Label Card (From reference code)
+      const occText = tokens.filter((t) => t.sectorId === sec.id).map((t) => t.name).join(", ") || "UNOCCUPIED";
+      const icon = isDome ? "🏛️" : sec.type === "vault" ? "🔒" : sec.type === "medical" ? "🩺" : "🏢";
+      const labelTexture = createLabelTexture(sec.name, icon, sec.riskLevel, occText, sec.wallColor);
+      const spriteMat = new THREE.SpriteMaterial({ map: labelTexture, transparent: true, opacity: 0.95 });
+      const labelSprite = new THREE.Sprite(spriteMat);
+      labelSprite.scale.set(7.5, 2.0, 1);
+      labelSprite.position.set(sec.x, height + 2.2, sec.z);
+      labelsGroup.add(labelSprite);
 
-          createWallSlab(sec.width, wallThickness, 0, -halfD);
-          createWallSlab(sec.width, wallThickness, 0, halfD);
-          createWallSlab(wallThickness, sec.depth, -halfW, 0);
-          createWallSlab(wallThickness, sec.depth, halfW, 0);
-        }
-      }
+      roomMeshes[sec.id] = { mesh: wallMesh, line: lineSegments, floor: floorMesh };
 
-      // Creative Roofs (Domes, Chamfers, Holographic Wireframe Caps)
-      if (sec.roofType === "dome") {
-        // Solid translucent dome
-        const domeSolidGeo = new THREE.SphereGeometry(sec.radius || 6, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        const domeSolidMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(sec.wallColor),
-          emissive: new THREE.Color(sec.wallColor),
-          emissiveIntensity: 0.1,
-          transparent: true,
-          opacity: 0.12,
-          side: THREE.DoubleSide,
-          roughness: 0.1,
-          metalness: 0.9,
-        });
-        const domeSolid = new THREE.Mesh(domeSolidGeo, domeSolidMat);
-        domeSolid.position.set(sec.x, wallHeight, sec.z);
-        scene.add(domeSolid);
-
-        // Wireframe overlay dome
-        const domeWireGeo = new THREE.SphereGeometry(sec.radius || 6, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-        const domeWireMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(sec.wallColor),
-          emissive: new THREE.Color(sec.wallColor),
-          emissiveIntensity: 0.6,
-          roughness: 0.1,
-          metalness: 0.9,
-          transparent: true,
-          opacity: 0.55,
-          wireframe: true,
-        });
-        const domeWire = new THREE.Mesh(domeWireGeo, domeWireMat);
-        domeWire.position.set(sec.x, wallHeight, sec.z);
-        scene.add(domeWire);
-      } else if (sec.roofType === "chamfer") {
-        const capGeo = new THREE.ConeGeometry((sec.width || 6) * 0.65, 2.5, 8);
-        const capMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(sec.wallColor),
-          transparent: true,
-          opacity: 0.35,
-          wireframe: true,
-        });
-        const capMesh = new THREE.Mesh(capGeo, capMat);
-        capMesh.position.set(sec.x, wallHeight + 1.25, sec.z);
-        scene.add(capMesh);
-      } else if (sec.roofType === "flat" && sec.shape !== "circle") {
-        const capGeo = new THREE.BoxGeometry(sec.width, 0.08, sec.depth);
-        const capMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(sec.wallColor),
-          emissive: new THREE.Color(sec.wallColor),
-          emissiveIntensity: 0.2,
-          transparent: true,
-          opacity: 0.3,
-        });
-        const capMesh = new THREE.Mesh(capGeo, capMat);
-        capMesh.position.set(sec.x, wallHeight + 0.04, sec.z);
-        scene.add(capMesh);
-      }
-
-      // Doors (Red for Locked Security Gates, Grey/Cyan for Standard Doors)
+      // Doors as Glowing Archways
       sec.doors.forEach((door) => {
-        const doorGeo = new THREE.BoxGeometry(1.8, 2.8, 0.4);
-        const doorMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(door.isLocked ? "#ef4444" : "#94a3b8"),
-          emissive: new THREE.Color(door.isLocked ? "#ef4444" : "#0284c7"),
-          emissiveIntensity: door.isLocked ? 0.8 : 0.2,
-          roughness: 0.2,
+        const archGeo = new THREE.BoxGeometry(1.8, 2.4, 0.35);
+        const archMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(door.isLocked ? "#ef4444" : "#00f0ff"),
+          wireframe: true,
+          transparent: true,
+          opacity: 0.75,
         });
-        const doorMesh = new THREE.Mesh(doorGeo, doorMat);
-        doorMesh.position.set(door.x, 1.4, door.z);
-        scene.add(doorMesh);
+        const archMesh = new THREE.Mesh(archGeo, archMat);
+        archMesh.position.set(door.x, 1.2, door.z);
+        scene.add(archMesh);
       });
     });
 
-    sectorMeshesRef.current = sectorMeshes;
+    roomMeshesRef.current = roomMeshes;
 
-    // 6b. Infected tokens inside lockdown dome (3 pulsing red spheres)
+    // 7. INFECTED AGENTS INSIDE CENTRAL DOME (User requirement: show infected people in center dome)
     for (let i = 0; i < 3; i++) {
-      const infGeo = new THREE.SphereGeometry(0.6, 12, 12);
+      const infGeo = new THREE.SphereGeometry(0.55, 12, 12);
       const infMat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(0xef4444),
         emissive: new THREE.Color(0xef4444),
         emissiveIntensity: 1.2,
-        roughness: 0.3,
+        roughness: 0.2,
       });
       const infMesh = new THREE.Mesh(infGeo, infMat);
       const angle = (i / 3) * Math.PI * 2;
-      infMesh.position.set(Math.cos(angle) * 2.5, 1.0, Math.sin(angle) * 2.5);
+      infMesh.position.set(Math.cos(angle) * 3.0, 0.9, Math.sin(angle) * 3.0);
       infMesh.userData = { isInfected: true };
       scene.add(infMesh);
     }
 
-    // 7. Group for Dynamic Noise / Emergency Pings
-    const pingsGroup = new THREE.Group();
-    scene.add(pingsGroup);
-    pingsGroupRef.current = pingsGroup;
-
-    // 8. Mouse & Orbit Interaction
-    const onMouseDown = (e: MouseEvent) => {
-      isDraggingRef.current = true;
-      previousMousePositionRef.current = { x: e.clientX, y: e.clientY };
+    // 8. Mouse & Pointer Controls
+    const onPointerDown = (e: MouseEvent) => {
+      if (e.target !== renderer.domElement) return;
+      controlsRef.current.isDragging = true;
+      controlsRef.current.previousMousePosition = { x: e.clientX, y: e.clientY };
     };
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const deltaX = e.clientX - previousMousePositionRef.current.x;
-      const deltaY = e.clientY - previousMousePositionRef.current.y;
+    const onPointerMove = (e: MouseEvent) => {
+      if (!controlsRef.current.isDragging) return;
+      const deltaX = e.clientX - controlsRef.current.previousMousePosition.x;
+      const deltaY = e.clientY - controlsRef.current.previousMousePosition.y;
 
-      cameraAngleRef.current.theta -= deltaX * 0.007;
-      cameraAngleRef.current.phi = Math.max(
-        0.15,
-        Math.min(Math.PI / 2.1, cameraAngleRef.current.phi - deltaY * 0.007)
-      );
+      controlsRef.current.rotY -= deltaX * 0.005;
+      controlsRef.current.rotX = Math.max(0.12, Math.min(Math.PI / 2.2, controlsRef.current.rotX + deltaY * 0.005));
 
-      previousMousePositionRef.current = { x: e.clientX, y: e.clientY };
+      controlsRef.current.previousMousePosition = { x: e.clientX, y: e.clientY };
       updateCameraPos();
     };
 
-    const onMouseUp = () => {
-      isDraggingRef.current = false;
+    const onPointerUp = () => {
+      controlsRef.current.isDragging = false;
     };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraAngleRef.current.radius = Math.max(
-        25,
-        Math.min(120, cameraAngleRef.current.radius + e.deltaY * 0.05)
-      );
+      controlsRef.current.zoom = Math.max(0.4, Math.min(2.4, controlsRef.current.zoom + e.deltaY * 0.001));
       updateCameraPos();
     };
 
-    // Raycast Click Selection
+    // Raycast click room targeting
     const raycaster = new THREE.Raycaster();
-    const mouseVec = new THREE.Vector2();
+    const mouse = new THREE.Vector2();
 
     const onClick = (e: MouseEvent) => {
+      if (e.target !== renderer.domElement) return;
       const rect = renderer.domElement.getBoundingClientRect();
-      mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(mouseVec, camera);
-      const intersects = raycaster.intersectObjects(scene.children, true);
+      raycaster.setFromCamera(mouse, camera);
+      const meshesToIntersect = Object.values(roomMeshesRef.current).map((r) => r.mesh);
+      const intersects = raycaster.intersectObjects(meshesToIntersect);
 
-      for (const hit of intersects) {
-        if (hit.object.userData && hit.object.userData.sectorId) {
-          onSelectSector(hit.object.userData.sectorId);
-          break;
+      if (intersects.length > 0) {
+        const hitSecId = intersects[0].object.userData.sectorId;
+        if (hitSecId) {
+          onSelectSector(hitSecId);
         }
       }
     };
 
-    const domElement = renderer.domElement;
-    domElement.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    domElement.addEventListener("wheel", onWheel, { passive: false });
-    domElement.addEventListener("click", onClick);
+    const domEl = renderer.domElement;
+    domEl.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    domEl.addEventListener("wheel", onWheel, { passive: false });
+    domEl.addEventListener("click", onClick);
 
-    // 9. Render Loop
-    let animationFrameId: number;
-    let clock = new THREE.Clock();
+    // 9. Animation Loop
+    let animId: number;
+    const clock = new THREE.Clock();
 
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+      animId = requestAnimationFrame(animate);
       const elapsed = clock.getElapsedTime();
 
-      // Animated scan line sweep
-      scanMesh.position.y = (elapsed * 1.5) % 5 - 0.2;
+      if (autoRotateCamera && !controlsRef.current.isDragging) {
+        controlsRef.current.rotY += 0.0035;
+        updateCameraPos();
+      }
 
-      // Pulse infected tokens
+      // Billboard labels face camera
+      if (labelsGroupRef.current) {
+        labelsGroupRef.current.children.forEach((sprite) => {
+          sprite.quaternion.copy(camera.quaternion);
+        });
+      }
+
+      // Pulsate infected bio-hazard nodes
       scene.children.forEach((child) => {
         if (child instanceof THREE.Mesh && child.userData.isInfected) {
           const mat = child.material as THREE.MeshStandardMaterial;
           mat.emissiveIntensity = 0.8 + Math.sin(elapsed * 4) * 0.6;
-          child.scale.setScalar(1 + Math.sin(elapsed * 3 + 1) * 0.1);
+          child.scale.setScalar(1 + Math.sin(elapsed * 3) * 0.12);
         }
       });
-
-      // Pulsate noise / alarm pings
-      if (pingsGroupRef.current) {
-        pingsGroupRef.current.children.forEach((child) => {
-          const s = 1 + (Math.sin(elapsed * 4) + 1) * 0.3;
-          child.scale.set(s, 1, s);
-        });
-      }
 
       // Float tokens slightly
       tokenMeshesRef.current.forEach((tGroup, idx) => {
@@ -417,39 +391,42 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     animate();
 
     const handleResize = () => {
-      if (!mountRef.current || !rendererRef.current || !cameraRef.current) return;
-      const nw = mountRef.current.clientWidth;
-      const nh = mountRef.current.clientHeight;
-      cameraRef.current.aspect = nw / nh;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(nw, nh);
+      if (!container) return;
+      const nw = container.clientWidth;
+      const nh = container.clientHeight;
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
+      renderer.setSize(nw, nh);
     };
 
     window.addEventListener("resize", handleResize);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      domElement.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      domElement.removeEventListener("wheel", onWheel);
-      domElement.removeEventListener("click", onClick);
+      cancelAnimationFrame(animId);
       window.removeEventListener("resize", handleResize);
+      domEl.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      domEl.removeEventListener("wheel", onWheel);
+      domEl.removeEventListener("click", onClick);
       renderer.dispose();
     };
-  }, [onSelectSector]);
+  }, [onSelectSector, autoRotateCamera]);
 
   // Update Sector Highlights
   useEffect(() => {
-    Object.entries(sectorMeshesRef.current).forEach(([secId, mesh]) => {
+    Object.entries(roomMeshesRef.current).forEach(([secId, { mesh, line }]) => {
       const isSelected = secId === selectedSectorId;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
+      const mat = mesh.material as THREE.MeshPhongMaterial;
+      const lineMat = line.material as THREE.LineBasicMaterial;
+
       if (isSelected) {
-        mat.emissive = new THREE.Color(0x38bdf8);
-        mat.emissiveIntensity = 0.6;
+        mat.opacity = 0.55;
+        mat.emissive = new THREE.Color(0x00f0ff);
+        lineMat.color.setHex(0x00f0ff);
       } else {
+        mat.opacity = 0.22;
         mat.emissive = new THREE.Color(0x000000);
-        mat.emissiveIntensity = 0;
       }
     });
   }, [selectedSectorId]);
@@ -459,7 +436,6 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     const scene = sceneRef.current;
     if (!scene) return;
 
-    // Clean previous token meshes
     tokenMeshesRef.current.forEach((t) => scene.remove(t));
     tokenMeshesRef.current = [];
 
@@ -474,7 +450,7 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
       const tokenMat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(tok.color),
         emissive: new THREE.Color(tok.color),
-        emissiveIntensity: 0.8,
+        emissiveIntensity: 0.9,
         roughness: 0.2,
         metalness: 0.8,
       });
@@ -487,16 +463,15 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
         color: new THREE.Color(tok.color),
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.7,
       });
       const ringMesh = new THREE.Mesh(ringGeo, ringMat);
       ringMesh.rotation.x = Math.PI / 2;
-      ringMesh.position.y = -1.0;
+      ringMesh.position.y = -0.9;
       group.add(ringMesh);
 
-      // Random jitter within sector for multiple players
-      const jitterX = (Math.random() - 0.5) * (sector.width * 0.4);
-      const jitterZ = (Math.random() - 0.5) * (sector.depth * 0.4);
+      const jitterX = (Math.random() - 0.5) * (sector.width * 0.35);
+      const jitterZ = (Math.random() - 0.5) * (sector.depth * 0.35);
 
       group.position.set(sector.x + jitterX, 1.2, sector.z + jitterZ);
       scene.add(group);
@@ -504,83 +479,85 @@ export const OakhavenMap3D: React.FC<OakhavenMap3DProps> = ({
     });
   }, [tokens]);
 
-  // Update Noise / Alert Pings
-  useEffect(() => {
-    const pGroup = pingsGroupRef.current;
-    if (!pGroup) return;
-
-    while (pGroup.children.length > 0) {
-      pGroup.remove(pGroup.children[0]);
+  // Camera Presets (From Visual Reference)
+  const setPresetView = (preset: "ISOMETRIC" | "TOP" | "FRONT") => {
+    setCameraPreset(preset);
+    if (preset === "ISOMETRIC") {
+      controlsRef.current.rotX = 0.65;
+      controlsRef.current.rotY = -0.5;
+      controlsRef.current.zoom = 1.0;
+    } else if (preset === "TOP") {
+      controlsRef.current.rotX = 1.52;
+      controlsRef.current.rotY = 0;
+      controlsRef.current.zoom = 0.95;
+    } else if (preset === "FRONT") {
+      controlsRef.current.rotX = 0.15;
+      controlsRef.current.rotY = 0;
+      controlsRef.current.zoom = 1.0;
     }
 
-    noisePings.forEach((ping) => {
-      const sector = OAKHAVEN_SECTORS.find((s) => s.id === ping.sectorId);
-      if (!sector) return;
-
-      const pingGeo = new THREE.RingGeometry(2, 2.5, 32);
-      const pingMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0xf43f5e),
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.8,
-      });
-      const pingMesh = new THREE.Mesh(pingGeo, pingMat);
-      pingMesh.rotation.x = Math.PI / 2;
-      pingMesh.position.set(sector.x, 0.4, sector.z);
-      pGroup.add(pingMesh);
-    });
-  }, [noisePings]);
+    if (cameraRef.current) {
+      const radius = 64 * controlsRef.current.zoom;
+      cameraRef.current.position.x = radius * Math.sin(controlsRef.current.rotY) * Math.cos(controlsRef.current.rotX);
+      cameraRef.current.position.y = radius * Math.sin(controlsRef.current.rotX);
+      cameraRef.current.position.z = radius * Math.cos(controlsRef.current.rotY) * Math.cos(controlsRef.current.rotX);
+      cameraRef.current.lookAt(0, 1.2, 0);
+    }
+  };
 
   return (
-    <div className="relative w-full h-full select-none overflow-hidden rounded-2xl border border-cyan-500/30 bg-slate-950/80 shadow-2xl shadow-cyan-950/40">
+    <div className="relative w-full h-full select-none overflow-hidden rounded-2xl border border-cyan-500/40 bg-slate-950/90 shadow-2xl">
       {/* 3D Canvas Mount */}
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Holographic HUD Overlays */}
-      <div className="absolute top-3 left-3 pointer-events-none flex flex-col gap-1 z-10">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 backdrop-blur-md">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-          <span className="text-xs font-black tracking-widest text-cyan-300 uppercase">
-            ☢ OAKHAVEN SHELTER — HOLOGRAPHIC INTEL MAP
-          </span>
+      {/* Top Header HUD Overlays (From reference visual design) */}
+      <div className="absolute top-2.5 left-2.5 right-2.5 flex justify-between items-center z-20 pointer-events-none">
+        <div className="px-3 py-1 rounded-xl bg-slate-900/90 border border-cyan-500/40 text-xs font-bold text-cyan-300 flex items-center gap-2 pointer-events-auto backdrop-blur-md">
+          <Crosshair className="w-4 h-4 text-amber-400 animate-spin" />
+          <span>OAKHAVEN FACILITY (HOLOGRAM INTEL)</span>
         </div>
-        <div className="text-[10px] text-slate-400 font-mono px-1">
-          L-Click + Drag: 360° Orbit • Scroll: Zoom • Click Room: Inspect Sector
-        </div>
-      </div>
 
-      {/* Vault Status Badges */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10 pointer-events-none">
-        {["vault_1", "vault_2", "vault_3", "vault_4"].map((vId, idx) => {
-          const isBreached = vaultBreaches[vId];
-          return (
-            <div
-              key={vId}
-              className={`px-2.5 py-1 rounded-xl text-[10px] font-black tracking-wider border backdrop-blur-md flex items-center gap-1.5 ${
-                isBreached
-                  ? "bg-rose-950/80 border-rose-500/60 text-rose-300 animate-pulse"
-                  : "bg-slate-900/80 border-slate-700/60 text-slate-300"
+        {/* Camera View Controls (ISOMETRIC / TOP / FRONT + Auto-Rotate) */}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {(["ISOMETRIC", "TOP", "FRONT"] as const).map((preset) => (
+            <button
+              key={preset}
+              onClick={() => setPresetView(preset)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
+                cameraPreset === preset
+                  ? "bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.4)]"
+                  : "bg-slate-900/90 text-cyan-300 border-cyan-500/40 hover:bg-slate-800"
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isBreached ? "bg-rose-400" : "bg-emerald-400"}`} />
-              <span>V{idx + 1} {isBreached ? "BREACHED" : "LOCKED"}</span>
-            </div>
-          );
-        })}
+              {preset}
+            </button>
+          ))}
+          <button
+            onClick={() => setAutoRotateCamera((prev) => !prev)}
+            className={`p-1.5 rounded-lg border transition ${
+              autoRotateCamera
+                ? "bg-cyan-500 text-slate-950 border-cyan-300"
+                : "bg-slate-900/90 text-cyan-300 border-cyan-500/40"
+            }`}
+            title="Toggle Auto Rotate"
+          >
+            <Compass className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* Center Dome Fortification Badge */}
-      {isFortified && (
-        <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-xl bg-blue-950/90 border border-blue-500/60 backdrop-blur-md flex items-center gap-2 text-xs font-bold text-blue-300 z-10">
-          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-          <span>Central Dome: Fortified Lockdown Active</span>
-        </div>
-      )}
+      {/* Active Sector badge at bottom right */}
+      <div className="absolute bottom-2.5 right-2.5 p-2 rounded-xl bg-slate-900/90 border border-cyan-500/50 text-xs font-mono flex items-center gap-2.5 z-20 backdrop-blur-md">
+        <span className="text-amber-400 font-bold">ACTIVE SECTOR:</span>
+        <span className="text-white font-bold">
+          {OAKHAVEN_SECTORS.find((s) => s.id === selectedSectorId)?.name || selectedSectorId}
+        </span>
+      </div>
 
-      {/* INFECTED IN DOME HUD Badge */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/90 border border-rose-500/60 backdrop-blur-md text-xs font-bold text-rose-300 z-10 animate-pulse">
+      {/* Infected in Dome status indicator */}
+      <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/90 border border-rose-500/60 backdrop-blur-md text-[11px] font-bold text-rose-300 z-10 animate-pulse">
         <span className="w-2 h-2 rounded-full bg-rose-500" />
-        <span>⚠ 3 INFECTED — LOCKDOWN DOME</span>
+        <span>⚠ 3 INFECTED IN LOCKDOWN DOME</span>
       </div>
     </div>
   );
