@@ -288,6 +288,18 @@ export function usePartyRoom(roomCode: string) {
     send({ type: "MASTERMIND_NEXT_PHASE" });
   }, [send]);
 
+  const moveMastermindPlayer = useCallback((x: number, z: number, rotation: number, isMoving: boolean, skin?: string, sectorId?: string) => {
+    send({ type: "MASTERMIND_PLAYER_MOVE", x, z, rotation, isMoving, skin, sectorId });
+  }, [send]);
+
+  const collectMastermindScrap = useCallback((scrapId: string) => {
+    send({ type: "MASTERMIND_COLLECT_SCRAP", scrapId });
+  }, [send]);
+
+  const selectMastermindSkin = useCallback((skin: string) => {
+    send({ type: "MASTERMIND_SELECT_SKIN", skin });
+  }, [send]);
+
   // Host Skip Timer
   const skipTimer = useCallback(() => {
     send({ type: "HOST_SKIP_TIMER" });
@@ -336,5 +348,8 @@ export function usePartyRoom(roomCode: string) {
     useMastermindAbility,
     voteMastermindSuspect,
     nextMastermindPhase,
+    moveMastermindPlayer,
+    collectMastermindScrap,
+    selectMastermindSkin,
   };
 }

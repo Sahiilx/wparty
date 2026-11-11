@@ -748,11 +748,10 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
           <button
             onClick={() => setSelectedAbility("normal1")}
             disabled={isLockedIn}
-            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${
-              selectedAbility === "normal1"
-                ? "bg-cyan-950/80 border-cyan-400 text-white shadow-lg shadow-cyan-950/80 scale-[1.02]"
-                : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
-            }`}
+            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${selectedAbility === "normal1"
+              ? "bg-cyan-950/80 border-cyan-400 text-white shadow-lg shadow-cyan-950/80 scale-[1.02]"
+              : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
+              }`}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-base">{abilities.normal1.icon}</span>
@@ -768,11 +767,10 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
           <button
             onClick={() => setSelectedAbility("normal2")}
             disabled={isLockedIn}
-            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${
-              selectedAbility === "normal2"
-                ? "bg-cyan-950/80 border-cyan-400 text-white shadow-lg shadow-cyan-950/80 scale-[1.02]"
-                : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
-            }`}
+            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${selectedAbility === "normal2"
+              ? "bg-cyan-950/80 border-cyan-400 text-white shadow-lg shadow-cyan-950/80 scale-[1.02]"
+              : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
+              }`}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-base">{abilities.normal2.icon}</span>
@@ -788,11 +786,10 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
           <button
             onClick={() => setSelectedAbility("ultimate")}
             disabled={isLockedIn}
-            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${
-              selectedAbility === "ultimate"
-                ? "bg-amber-950/80 border-amber-400 text-white shadow-lg shadow-amber-950/80 scale-[1.02]"
-                : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
-            }`}
+            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${selectedAbility === "ultimate"
+              ? "bg-amber-950/80 border-amber-400 text-white shadow-lg shadow-amber-950/80 scale-[1.02]"
+              : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700"
+              }`}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-base">{abilities.ultimate.icon}</span>
@@ -831,7 +828,7 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
           <div className="flex items-center gap-2">
             {/* Quick Playful Reaction Emote Buttons */}
             <div className="flex items-center gap-1 mr-2">
-              {["🎯", "👀", "🤫", "🍿", "😂", "🤔", "😤", "🫵"].map((em) => (
+              {["🎯", "👀", "🤫", "🍿"].map((em) => (
                 <button
                   key={em}
                   onClick={() => handleTriggerEmote(em)}
@@ -856,3 +853,4 @@ export const RoundTableMeeting: React.FC<RoundTableMeetingProps> = ({
     </div>
   );
 };
+

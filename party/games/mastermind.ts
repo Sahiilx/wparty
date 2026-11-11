@@ -171,9 +171,47 @@ export class MastermindEngine {
       detonationArmed: false,
       nightNews: [],
       votes: {},
+      worldScraps: MastermindEngine.generateWorldScraps(),
     };
 
     roomState.status = 'playing';
+  }
+
+  // ------------------------------------------------------------------
+  // World Scrap Spawns (Pickable 3D Resource Cubes)
+  // ------------------------------------------------------------------
+  static generateWorldScraps(): Array<{ id: string; x: number; z: number; item: MastermindItem; sectorId: string }> {
+    const sectors = [
+      { id: 'lockdown_dome', x: 0, z: 0 },
+      { id: 'vault_1', x: -11, z: 0 },
+      { id: 'vault_2', x: 0, z: -11 },
+      { id: 'vault_3', x: 11, z: 0 },
+      { id: 'vault_4', x: 0, z: 11 },
+      { id: 'med_bay', x: -16, z: -16 },
+      { id: 'gas_chamber', x: 16, z: 16 },
+      { id: 'corridor_north', x: 0, z: -20 },
+      { id: 'corridor_south', x: 0, z: 20 },
+      { id: 'corridor_east', x: 20, z: 0 },
+      { id: 'corridor_west', x: -20, z: 0 },
+    ];
+    const items: MastermindItem[] = [
+      'battery', 'micro_cipher', 'chemical_solvent', 'steel_frame', 'volatile_powder',
+      'bio_sample', 'scrap_metal', 'duct_tape', 'flashlight', 'discarded_key'
+    ];
+    const scraps = [];
+    for (let i = 0; i < 18; i++) {
+      const sec = sectors[i % sectors.length];
+      const offsetX = (Math.random() - 0.5) * 6;
+      const offsetZ = (Math.random() - 0.5) * 6;
+      scraps.push({
+        id: `scrap_${Date.now()}_${i}`,
+        x: Math.round((sec.x + offsetX) * 10) / 10,
+        z: Math.round((sec.z + offsetZ) * 10) / 10,
+        item: items[Math.floor(Math.random() * items.length)],
+        sectorId: sec.id,
+      });
+    }
+    return scraps;
   }
 
   // ------------------------------------------------------------------
@@ -266,6 +304,50 @@ export class MastermindEngine {
     p.coins -= cost;
     p.inventory.push(item);
     return true;
+  }
+
+  static playerMove(
+    roomState: RoomState,
+    playerId: string,
+    x: number,
+    z: number,
+    rotation: number,
+    isMoving: boolean,
+    skin?: string,
+    sectorId?: string
+  ): void {
+    const g = roomState.mastermindState;
+    if (!g) return;
+    const p = g.players[playerId];
+    if (!p) return;
+    p.x = x;
+    p.z = z;
+    p.rotation = rotation;
+    p.isMoving = isMoving;
+    if (skin) p.skin = skin;
+    if (sectorId) p.sectorId = sectorId;
+  }
+
+  static collectScrap(roomState: RoomState, playerId: string, scrapId: string): boolean {
+    const g = roomState.mastermindState;
+    if (!g || !g.worldScraps) return false;
+    const scrapIdx = g.worldScraps.findIndex((s) => s.id === scrapId);
+    if (scrapIdx === -1) return false;
+    const p = g.players[playerId];
+    if (!p) return false;
+
+    const [collected] = g.worldScraps.splice(scrapIdx, 1);
+    p.inventory.push(collected.item);
+    p.coins = (p.coins || 0) + 12; // Extra coins for looting!
+    return true;
+  }
+
+  static selectSkin(roomState: RoomState, playerId: string, skin: string): void {
+    const g = roomState.mastermindState;
+    if (!g) return;
+    const p = g.players[playerId];
+    if (!p) return;
+    p.skin = skin;
   }
 
   // Legacy compat alias (from party/index.ts)
@@ -568,6 +650,7 @@ export class MastermindEngine {
     g.phase = 'minigame';
     g.timer = 50;
     g.auctionSlots = MastermindEngine.generateAuctionSlots(g.currentRound);
+    g.worldScraps = MastermindEngine.generateWorldScraps();
 
     // Clear one-round status effects
     for (const p of Object.values(g.players)) {

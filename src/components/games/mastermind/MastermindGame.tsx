@@ -17,6 +17,8 @@ import {
   Bot,
   RotateCcw,
   Users,
+  Compass,
+  Sparkles,
 } from "lucide-react";
 import { PowerSplitMiniGame, CyberCipherMiniGame, LeveragePoolMiniGame } from "./MiniGames";
 import { RoundTableMeeting } from "./RoundTableMeeting";
@@ -24,6 +26,7 @@ import { ShopAndCrafting } from "./ShopAndCrafting";
 import { NewsGazetteSlideshow } from "./NewsGazetteSlideshow";
 import { OperativeToken } from "./OakhavenMap3D";
 import { OAKHAVEN_SECTORS } from "./oakhavenMapData";
+import { Mastermind3DWorld } from "./Mastermind3DWorld";
 
 // ============================================================
 // A. UI THEMES SYSTEM (FULL REPAINT)
@@ -83,6 +86,9 @@ interface MastermindGameProps {
   onBidAuction?: (slotId: string, bidAmount: number) => void;
   onClaimFreeCards?: () => void;
   onCraftItem?: (item: MastermindItem) => void;
+  onMovePlayer?: (x: number, z: number, rotation: number, isMoving: boolean, skin?: string, sectorId?: string) => void;
+  onCollectScrap?: (scrapId: string) => void;
+  onSelectSkin?: (skin: string) => void;
 }
 
 const ROLE_ICONS: Record<string, string> = {
@@ -117,6 +123,9 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   onBidAuction,
   onClaimFreeCards,
   onCraftItem,
+  onMovePlayer,
+  onCollectScrap,
+  onSelectSkin,
 }) => {
   const g = roomState.mastermindState as MastermindGameState | undefined;
   const [selectedSectorId, setSelectedSectorId] = useState("lockdown_dome");
@@ -128,7 +137,10 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   // B. Card flip state for role_reveal
   const [flippedIdx, setFlippedIdx] = useState<number | null>(null);
 
-  // C. Phase transition announcement
+  // C. View Mode: Allow freely exploring 3D Facility at any time
+  const [forceWorldView, setForceWorldView] = useState<boolean>(false);
+
+  // D. Phase transition announcement
   const [showPhaseAnnounce, setShowPhaseAnnounce] = useState(false);
   const [announceText, setAnnounceText] = useState("");
   const prevPhaseRef = useRef("");
@@ -269,20 +281,28 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
     };
 
     return (
-      <div
-        className="flex-1 flex flex-col items-center justify-center text-white select-none relative overflow-hidden"
-        style={{ backgroundColor: t.bg }}
-      >
-        {/* Full-screen background ambiance */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at center, ${t.glow}18 0%, transparent 70%)` }} />
+      <div className="flex-1 flex flex-col items-center justify-center text-white select-none relative overflow-hidden h-full">
+        {/* Background 3D Facility Canvas */}
+        <div className="absolute inset-0 z-0">
+          <Mastermind3DWorld
+            gameState={g}
+            myId={myId}
+            themePrimary={t.primary}
+            onMovePlayer={onMovePlayer}
+            onCollectScrap={onCollectScrap}
+            onSelectSkin={onSelectSkin}
+          />
+        </div>
 
-        <div className="relative z-10 flex flex-col items-center gap-8 px-4 max-w-3xl w-full">
-          {/* Title */}
-          <div className="flex flex-col items-center gap-1.5 text-center">
-            <div
-              className="text-3xl font-black tracking-[0.4em] uppercase"
-              style={{ color: t.primary, textShadow: t.textGlow }}
-            >
+        {/* Foreground Glassmorphic Card Reveal Modal */}
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto">
+          <div className="relative flex flex-col items-center gap-6 px-6 py-8 max-w-3xl w-full bg-slate-900/90 border border-cyan-500/40 rounded-3xl shadow-2xl backdrop-blur-xl">
+            {/* Title */}
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <div
+                className="text-2xl sm:text-3xl font-black tracking-[0.4em] uppercase"
+                style={{ color: t.primary, textShadow: t.textGlow }}
+              >
               {isRevealed ? "ROLE REVEALED" : "CHOOSE YOUR FATE"}
             </div>
             <p className="text-xs font-mono text-slate-400">
@@ -463,14 +483,31 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   // =========================================================================
   // SHARED CHROME: Phase Header + Player Roster
   // =========================================================================
 
   const renderPhaseContent = () => {
+    // If player toggled full 3D Facility Roam mode
+    if (forceWorldView) {
+      return (
+        <div className="flex-1 relative overflow-hidden h-full">
+          <Mastermind3DWorld
+            gameState={g}
+            myId={myId}
+            themePrimary={t.primary}
+            onMovePlayer={onMovePlayer}
+            onCollectScrap={onCollectScrap}
+            onSelectSkin={onSelectSkin}
+          />
+        </div>
+      );
+    }
+
     // ---- MINI-GAME PHASE ----
     if (phase === "minigame") {
       const miniGame = g.currentMiniGame || "power_split";
@@ -652,8 +689,22 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           ))}
         </div>
 
-        {/* Right side: Theme buttons + Timer + Host Controls */}
+        {/* Right side: 3D Roam Toggle + Theme buttons + Timer + Host Controls */}
         <div className="flex items-center gap-2">
+          {/* 3D Roam & Minimap Mode Toggle */}
+          <button
+            onClick={() => setForceWorldView((v) => !v)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-black uppercase tracking-wider transition shadow-lg ${
+              forceWorldView
+                ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 border-white shadow-cyan-500/30"
+                : "bg-slate-900/90 text-cyan-300 border-cyan-500/40 hover:bg-slate-800"
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{forceWorldView ? "Phase View" : "3D Roam & Map"}</span>
+            <span className="sm:hidden">{forceWorldView ? "Phase" : "3D"}</span>
+          </button>
+
           {/* A. Theme selector buttons */}
           <div className="flex items-center gap-1 mr-1">
             <button

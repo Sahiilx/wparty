@@ -76,6 +76,9 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
     bidMastermindAuction,
     claimMastermindFreeCards,
     craftMastermindItem,
+    moveMastermindPlayer,
+    collectMastermindScrap,
+    selectMastermindSkin,
     skipTimer,
   } = usePartyRoom(roomCode);
 
@@ -315,6 +318,9 @@ export default function PartyRoomPage({ params }: PartyRoomPageProps) {
               onBidAuction={bidMastermindAuction}
               onClaimFreeCards={claimMastermindFreeCards}
               onCraftItem={craftMastermindItem}
+              onMovePlayer={moveMastermindPlayer}
+              onCollectScrap={collectMastermindScrap}
+              onSelectSkin={selectMastermindSkin}
             />
           ) : (
             <SkribblGame

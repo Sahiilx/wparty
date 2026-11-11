@@ -324,6 +324,11 @@ export interface MastermindPlayerInfo {
   cash: number; // legacy alias for coins
   medpacks: number;
   shields: number;
+  x?: number;
+  z?: number;
+  rotation?: number;
+  isMoving?: boolean;
+  skin?: string; // 'chameleon' | 'mecha' | 'monarch' | 'neko' | 'shadow'
 }
 
 export interface AuctionSlot {
@@ -377,6 +382,7 @@ export interface MastermindGameState {
   winnerReason?: string;
   mvpPlayerId?: string;
   minigameTargetScore?: number;
+  worldScraps?: Array<{ id: string; x: number; z: number; item: MastermindItem; sectorId: string }>;
 }
 
 export interface RoomState {
@@ -441,6 +447,9 @@ export type ClientMessage =
   | { type: 'MASTERMIND_CRAFT_ITEM'; resultItem: MastermindItem }
   | { type: 'MASTERMIND_TABLE_ACTION'; action: 'point' | 'laser' | 'emote'; targetId?: string }
   | { type: 'MASTERMIND_MOVE_SECTOR'; sectorId: string }
+  | { type: 'MASTERMIND_PLAYER_MOVE'; x: number; z: number; rotation: number; isMoving: boolean; skin?: string; sectorId?: string }
+  | { type: 'MASTERMIND_COLLECT_SCRAP'; scrapId: string }
+  | { type: 'MASTERMIND_SELECT_SKIN'; skin: string }
   | { type: 'MASTERMIND_USE_ABILITY'; abilityType: string; targetId?: string }
   | { type: 'MASTERMIND_VOTE_SUSPECT'; suspectId: string }
   | { type: 'MASTERMIND_NEXT_PHASE' };

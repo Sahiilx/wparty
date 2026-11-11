@@ -800,6 +800,39 @@ export default class PartyServer implements Party.Server {
         }
         break;
       }
+
+      case 'MASTERMIND_PLAYER_MOVE': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.playerMove(
+            this.roomState,
+            playerId,
+            msg.x,
+            msg.z,
+            msg.rotation,
+            msg.isMoving,
+            msg.skin,
+            msg.sectorId
+          );
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_COLLECT_SCRAP': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.collectScrap(this.roomState, playerId, msg.scrapId);
+          this.broadcastState();
+        }
+        break;
+      }
+
+      case 'MASTERMIND_SELECT_SKIN': {
+        if (this.roomState.status === 'playing') {
+          MastermindEngine.selectSkin(this.roomState, playerId, msg.skin);
+          this.broadcastState();
+        }
+        break;
+      }
     }
   }
 
