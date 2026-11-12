@@ -19,9 +19,19 @@ import {
   Users,
   Compass,
   Sparkles,
+  ShoppingCart,
+  Zap,
+  Target,
+  Shield,
+  Check,
+  AlertTriangle,
+  HelpCircle,
+  X,
+  Maximize2,
+  ChevronRight,
 } from "lucide-react";
 import { PowerSplitMiniGame, CyberCipherMiniGame, LeveragePoolMiniGame } from "./MiniGames";
-import { RoundTableMeeting } from "./RoundTableMeeting";
+import { RoundTableMeeting, ROLE_ABILITIES } from "./RoundTableMeeting";
 import { ShopAndCrafting } from "./ShopAndCrafting";
 import { NewsGazetteSlideshow } from "./NewsGazetteSlideshow";
 import { OperativeToken } from "./OakhavenMap3D";
@@ -104,10 +114,10 @@ const HEALTH_ICONS: Record<string, string> = {
 };
 const PHASE_INFO: Record<string, { label: string; icon: string; color: string }> = {
   role_reveal:          { label: "Role Reveal",         icon: "🃏", color: "text-amber-300" },
-  minigame:             { label: "Mini-Game",           icon: "⚡", color: "text-cyan-300" },
-  round_table_meeting:  { label: "Round Table",         icon: "🪑", color: "text-purple-300" },
+  minigame:             { label: "Mini-Game Terminal",   icon: "⚡", color: "text-cyan-300" },
+  round_table_meeting:  { label: "Round Table Council", icon: "🪑", color: "text-purple-300" },
   shop_and_craft:       { label: "Shop & Crafting",     icon: "🛒", color: "text-emerald-300" },
-  news_gazette:         { label: "Intel Gazette",       icon: "📰", color: "text-rose-300" },
+  news_gazette:         { label: "Intel Transmission",  icon: "📰", color: "text-rose-300" },
   game_over:            { label: "Game Over",           icon: "🏆", color: "text-amber-400" },
 };
 
@@ -137,10 +147,15 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   // B. Card flip state for role_reveal
   const [flippedIdx, setFlippedIdx] = useState<number | null>(null);
 
-  // C. View Mode: Allow freely exploring 3D Facility at any time
-  const [forceWorldView, setForceWorldView] = useState<boolean>(false);
+  // C. Round Table Council Ability States
+  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedAbility, setSelectedAbility] = useState<string | null>("normal1");
+  const [isAbilityLockedIn, setIsAbilityLockedIn] = useState<boolean>(false);
 
-  // D. Phase transition announcement
+  // D. Shop & Procurement Drawer State
+  const [shopDrawerOpen, setShopDrawerOpen] = useState<boolean>(false);
+
+  // E. Phase transition announcement
   const [showPhaseAnnounce, setShowPhaseAnnounce] = useState(false);
   const [announceText, setAnnounceText] = useState("");
   const prevPhaseRef = useRef("");
@@ -167,12 +182,14 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
     return Object.values(g.players);
   }, [g]);
 
-  // C. Phase transition effect
+  // Phase transition effect
   useEffect(() => {
     if (!g) return;
     const phase = g.phase;
     if (phase !== prevPhaseRef.current) {
       prevPhaseRef.current = phase;
+      setIsAbilityLockedIn(false);
+      setSelectedTargetId(null);
       if (phase !== "role_reveal" && phase !== "game_over") {
         const phaseInfo = PHASE_INFO[phase] || { label: phase };
         setAnnounceText(`Round ${g.currentRound}  •  ${phaseInfo.label}`);
@@ -181,7 +198,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
         return () => clearTimeout(tid);
       }
     }
-  }, [g?.phase]);
+  }, [g?.phase, g?.currentRound]);
 
   if (!g) {
     return (
@@ -198,6 +215,13 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   const phase = g.phase;
   const phaseInfo = PHASE_INFO[phase] || { label: phase, icon: "⚙️", color: "text-slate-300" };
   const isHost = roomState.players[myId]?.isHost;
+
+  // Handle Council Ability Confirmation
+  const handleConfirmAbility = () => {
+    if (!selectedAbility) return;
+    onUseAbility(selectedAbility, selectedTargetId || undefined);
+    setIsAbilityLockedIn(true);
+  };
 
   // =========================================================================
   // GAME OVER SCREEN
@@ -268,34 +292,22 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   }
 
   // =========================================================================
-  // B. ROLE REVEAL PHASE — Single Choice Card Selection (Locked once clicked)
+  // DIEGETIC PHASE 3D HUD OVERLAYS
   // =========================================================================
-  if (phase === "role_reveal") {
-    const cardCount = Math.max(3, Math.min(allPlayers.length, 8));
-    const isRevealed = flippedIdx !== null;
-    const roleColor = myPlayer ? ROLE_COLORS[myPlayer.role] : t.primary;
+  const renderPhaseOverlay = () => {
+    // 1. ROLE REVEAL OVERLAY (Single-Choice Card envelope)
+    if (phase === "role_reveal") {
+      const cardCount = Math.max(3, Math.min(allPlayers.length, 8));
+      const isRevealed = flippedIdx !== null;
+      const roleColor = myPlayer ? ROLE_COLORS[myPlayer.role] : t.primary;
 
-    const handleSelectCard = (index: number) => {
-      if (flippedIdx !== null) return; // Player can only select ONE card and cannot change it!
-      setFlippedIdx(index);
-    };
+      const handleSelectCard = (index: number) => {
+        if (flippedIdx !== null) return;
+        setFlippedIdx(index);
+      };
 
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-white select-none relative overflow-hidden h-full">
-        {/* Background 3D Facility Canvas */}
-        <div className="absolute inset-0 z-0">
-          <Mastermind3DWorld
-            gameState={g}
-            myId={myId}
-            themePrimary={t.primary}
-            onMovePlayer={onMovePlayer}
-            onCollectScrap={onCollectScrap}
-            onSelectSkin={onSelectSkin}
-          />
-        </div>
-
-        {/* Foreground Glassmorphic Card Reveal Modal */}
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto">
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto pointer-events-auto">
           <div className="relative flex flex-col items-center gap-6 px-6 py-8 max-w-3xl w-full bg-slate-900/90 border border-cyan-500/40 rounded-3xl shadow-2xl backdrop-blur-xl">
             {/* Title */}
             <div className="flex flex-col items-center gap-1.5 text-center">
@@ -303,282 +315,396 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
                 className="text-2xl sm:text-3xl font-black tracking-[0.4em] uppercase"
                 style={{ color: t.primary, textShadow: t.textGlow }}
               >
-              {isRevealed ? "ROLE REVEALED" : "CHOOSE YOUR FATE"}
+                {isRevealed ? "ROLE REVEALED" : "CHOOSE YOUR FATE"}
+              </div>
+              <p className="text-xs font-mono text-slate-400">
+                {isRevealed
+                  ? "Your secret operative clearance is confirmed. Do not expose your identity."
+                  : "Select 1 encrypted card to uncover your classified assignment. Choice cannot be changed."}
+              </p>
             </div>
-            <p className="text-xs font-mono text-slate-400">
-              {isRevealed
-                ? "Your secret operative clearance is confirmed. Do not expose your identity."
-                : "Select 1 encrypted card to uncover your classified assignment. Choice cannot be changed."}
-            </p>
-          </div>
 
-          {/* Card Fan Row */}
-          <div className="flex items-center justify-center gap-3.5 flex-wrap">
-            {Array.from({ length: cardCount }, (_, i) => {
-              const isFlipped = flippedIdx === i;
+            {/* Card Fan Row */}
+            <div className="flex items-center justify-center gap-3.5 flex-wrap">
+              {Array.from({ length: cardCount }, (_, i) => {
+                const isFlipped = flippedIdx === i;
 
-              return (
-                <div
-                  key={i}
-                  onClick={() => handleSelectCard(i)}
-                  style={{
-                    perspective: "600px",
-                    cursor: isRevealed ? (isFlipped ? "default" : "not-allowed") : "pointer",
-                    opacity: isRevealed && !isFlipped ? 0.35 : 1,
-                    transform: isRevealed && isFlipped ? "scale(1.08)" : "scale(1)",
-                    transition: "transform 0.4s ease, opacity 0.4s ease",
-                  }}
-                  className="relative active:scale-95 transition-transform"
-                >
-                  {/* Inner flipper */}
+                return (
                   <div
+                    key={i}
+                    onClick={() => handleSelectCard(i)}
                     style={{
-                      width: "95px",
-                      height: "135px",
-                      position: "relative",
-                      transformStyle: "preserve-3d",
-                      transition: "transform 0.65s cubic-bezier(0.4,0,0.2,1)",
-                      transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                      perspective: "600px",
+                      cursor: isRevealed ? (isFlipped ? "default" : "not-allowed") : "pointer",
+                      opacity: isRevealed && !isFlipped ? 0.35 : 1,
+                      transform: isRevealed && isFlipped ? "scale(1.08)" : "scale(1)",
+                      transition: "transform 0.4s ease, opacity 0.4s ease",
                     }}
+                    className="relative active:scale-95 transition-transform"
                   >
-                    {/* FRONT FACE */}
+                    {/* Inner flipper */}
                     <div
                       style={{
-                        position: "absolute",
-                        inset: 0,
-                        backfaceVisibility: "hidden",
-                        WebkitBackfaceVisibility: "hidden",
-                        borderRadius: "14px",
-                        border: `2px solid ${t.primary}`,
-                        backgroundColor: t.surface,
-                        boxShadow: `0 0 20px ${t.glow}44`,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
+                        width: "95px",
+                        height: "135px",
+                        position: "relative",
+                        transformStyle: "preserve-3d",
+                        transition: "transform 0.65s cubic-bezier(0.4,0,0.2,1)",
+                        transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                       }}
                     >
-                      <span style={{ fontSize: "1.9rem", opacity: 0.85 }}>🃏</span>
+                      {/* FRONT FACE */}
                       <div
                         style={{
-                          fontSize: "10px",
-                          fontFamily: "monospace",
-                          color: t.primary,
-                          letterSpacing: "0.15em",
-                          fontWeight: 800,
-                          textAlign: "center",
-                          padding: "0 6px",
+                          position: "absolute",
+                          inset: 0,
+                          backfaceVisibility: "hidden",
+                          WebkitBackfaceVisibility: "hidden",
+                          borderRadius: "14px",
+                          border: `2px solid ${t.primary}`,
+                          backgroundColor: t.surface,
+                          boxShadow: `0 0 20px ${t.glow}44`,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
                         }}
                       >
-                        ENCRYPTED
+                        <span style={{ fontSize: "1.9rem", opacity: 0.85 }}>🃏</span>
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            fontFamily: "monospace",
+                            color: t.primary,
+                            letterSpacing: "0.15em",
+                            fontWeight: 800,
+                            textAlign: "center",
+                            padding: "0 6px",
+                          }}
+                        >
+                          ENCRYPTED
+                        </div>
                       </div>
-                      <div style={{ position: "absolute", inset: "6px", border: `1px solid ${t.primary}33`, borderRadius: "10px", pointerEvents: "none" }} />
-                    </div>
 
-                    {/* BACK FACE */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        backfaceVisibility: "hidden",
-                        WebkitBackfaceVisibility: "hidden",
-                        transform: "rotateY(180deg)",
-                        borderRadius: "14px",
-                        border: `2px solid ${roleColor}`,
-                        backgroundColor: t.surface,
-                        boxShadow: `0 0 30px ${roleColor}55`,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        padding: "8px",
-                      }}
-                    >
-                      {isFlipped && myPlayer ? (
-                        <>
-                          <span style={{ fontSize: "2rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontFamily: "monospace",
-                              fontWeight: 900,
-                              color: roleColor,
-                              textTransform: "capitalize",
-                              textAlign: "center",
-                            }}
-                          >
-                            {myPlayer.role}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: "1.4rem" }}>🔒</span>
-                          <div
-                            style={{
-                              fontSize: "9px",
-                              fontFamily: "monospace",
-                              fontWeight: 700,
-                              color: "#64748b",
-                              textAlign: "center",
-                            }}
-                          >
-                            CLASSIFIED
-                          </div>
-                        </>
-                      )}
+                      {/* BACK FACE */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          backfaceVisibility: "hidden",
+                          WebkitBackfaceVisibility: "hidden",
+                          transform: "rotateY(180deg)",
+                          borderRadius: "14px",
+                          border: `2px solid ${roleColor}`,
+                          backgroundColor: t.surface,
+                          boxShadow: `0 0 30px ${roleColor}55`,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          padding: "8px",
+                        }}
+                      >
+                        {isFlipped && myPlayer ? (
+                          <>
+                            <span style={{ fontSize: "2rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+                            <div
+                              style={{
+                                fontSize: "12px",
+                                fontFamily: "monospace",
+                                fontWeight: 900,
+                                color: roleColor,
+                                textTransform: "capitalize",
+                                textAlign: "center",
+                              }}
+                            >
+                              {myPlayer.role}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: "1.4rem" }}>🔒</span>
+                            <div style={{ fontSize: "9px", fontFamily: "monospace", color: "#64748b" }}>
+                              CLASSIFIED
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
 
-          {/* Role reveal detail panel — shown after clicked card flips */}
-          {isRevealed && myPlayer && (
-            <div
-              className="flex flex-col items-center gap-3 p-6 rounded-3xl animate-fade-in"
-              style={{
-                border: `2px solid ${roleColor}88`,
-                backgroundColor: t.surface,
-                boxShadow: `0 0 50px ${roleColor}33`,
-                minWidth: "280px",
-              }}
-            >
-              <span style={{ fontSize: "3.5rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
-              <span
+            {/* Role reveal detail panel */}
+            {isRevealed && myPlayer && (
+              <div
+                className="flex flex-col items-center gap-3 p-6 rounded-3xl animate-fade-in"
                 style={{
-                  fontSize: "1.75rem",
-                  fontWeight: 900,
-                  color: roleColor,
-                  textTransform: "capitalize",
-                  letterSpacing: "0.1em",
+                  border: `2px solid ${roleColor}88`,
+                  backgroundColor: t.surface,
+                  boxShadow: `0 0 50px ${roleColor}33`,
+                  minWidth: "280px",
                 }}
               >
-                {myPlayer.role}
-              </span>
-              <span className="text-sm font-mono text-center max-w-md" style={{ color: t.primary }}>
-                {myPlayer.team === "town" && "🏛️ You are part of the Town. Secure the facility & synthesize the Panacea!"}
-                {myPlayer.team === "syndicate" && "💀 You are the Syndicate. Sabotage the vaults & detonate the core!"}
-                {myPlayer.team === "neutral" && "🃏 You are a Wildcard. Manipulate both sides to achieve victory!"}
-              </span>
-              <div className="flex items-center gap-3 mt-2 px-4 py-2 rounded-2xl bg-slate-950/80 border border-slate-800">
-                <span className="text-2xl">{myPlayer.avatar}</span>
-                <div className="flex flex-col">
-                  <span className="font-mono text-xs font-bold text-slate-200">{myPlayer.name}</span>
-                  <span className="text-[10px] text-slate-500">Your anonymous alias this match</span>
+                <span style={{ fontSize: "3.5rem" }}>{ROLE_ICONS[myPlayer.role]}</span>
+                <span
+                  style={{
+                    fontSize: "1.75rem",
+                    fontWeight: 900,
+                    color: roleColor,
+                    textTransform: "capitalize",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {myPlayer.role}
+                </span>
+                <span className="text-sm font-mono text-center max-w-md" style={{ color: t.primary }}>
+                  {myPlayer.team === "town" && "🏛️ You are part of the Town. Secure the facility & synthesize the Panacea!"}
+                  {myPlayer.team === "syndicate" && "💀 You are the Syndicate. Sabotage the vaults & detonate the core!"}
+                  {myPlayer.team === "neutral" && "🃏 You are a Wildcard. Manipulate both sides to achieve victory!"}
+                </span>
+                <div className="flex items-center gap-3 mt-2 px-4 py-2 rounded-2xl bg-slate-950/80 border border-slate-800">
+                  <span className="text-2xl">{myPlayer.avatar}</span>
+                  <div className="flex flex-col">
+                    <span className="font-mono text-xs font-bold text-slate-200">{myPlayer.name}</span>
+                    <span className="text-[10px] text-slate-500">Your anonymous alias this match</span>
+                  </div>
                 </div>
               </div>
+            )}
+
+            {/* Timer countdown */}
+            <div className="flex items-center gap-2 font-mono text-xs" style={{ color: t.primary + "bb" }}>
+              <Clock className="w-4 h-4 animate-pulse" />
+              <span>
+                Mini-game begins in{" "}
+                <span style={{ color: "#fbbf24", fontWeight: 900 }}>{g.timer}s</span>
+              </span>
             </div>
-          )}
-
-          {/* Timer countdown */}
-          <div className="flex items-center gap-2 font-mono text-xs" style={{ color: t.primary + "bb" }}>
-            <Clock className="w-4 h-4 animate-pulse" />
-            <span>
-              Mini-game begins in{" "}
-              <span style={{ color: "#fbbf24", fontWeight: 900 }}>{g.timer}s</span>
-            </span>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-  // =========================================================================
-  // SHARED CHROME: Phase Header + Player Roster
-  // =========================================================================
-
-  const renderPhaseContent = () => {
-    // If player toggled full 3D Facility Roam mode
-    if (forceWorldView) {
-      return (
-        <div className="flex-1 relative overflow-hidden h-full">
-          <Mastermind3DWorld
-            gameState={g}
-            myId={myId}
-            themePrimary={t.primary}
-            onMovePlayer={onMovePlayer}
-            onCollectScrap={onCollectScrap}
-            onSelectSkin={onSelectSkin}
-          />
         </div>
       );
     }
 
-    // ---- MINI-GAME PHASE ----
+    // 2. MINI-GAME OVERLAY (In-World Terminal Screen)
     if (phase === "minigame") {
       const miniGame = g.currentMiniGame || "power_split";
-
       const handleComplete = (_coins: number, score: number) => {
         onSubmitMinigameScore(score);
       };
 
       return (
-        <div className="flex-1 flex items-center justify-center p-4 overflow-y-auto">
-          {miniGame === "power_split" && (
-            <PowerSplitMiniGame onComplete={handleComplete} />
-          )}
-          {miniGame === "cyber_cipher" && (
-            <CyberCipherMiniGame onComplete={handleComplete} />
-          )}
-          {miniGame === "leverage_pool" && (
-            <LeveragePoolMiniGame onComplete={handleComplete} />
-          )}
+        <div className="flex-1 flex items-center justify-center p-3 sm:p-5 overflow-y-auto pointer-events-auto bg-slate-950/60 backdrop-blur-sm">
+          {miniGame === "power_split" && <PowerSplitMiniGame onComplete={handleComplete} />}
+          {miniGame === "cyber_cipher" && <CyberCipherMiniGame onComplete={handleComplete} />}
+          {miniGame === "leverage_pool" && <LeveragePoolMiniGame onComplete={handleComplete} />}
         </div>
       );
     }
 
-    // ---- ROUND TABLE MEETING PHASE ----
+    // 3. ROUND TABLE MEETING (Live 3D Council Deck & 3D Targeting Laser)
     if (phase === "round_table_meeting") {
       if (!myPlayer) return null;
+      const abilities = ROLE_ABILITIES[myPlayer.role] || ROLE_ABILITIES.sheriff;
+
       return (
-        <div className="flex-1 overflow-hidden">
-          <RoundTableMeeting
-            players={allPlayers}
-            myPlayer={myPlayer}
-            timer={g.timer}
-            onUseAbility={onUseAbility}
-          />
+        <div className="flex-1 flex flex-col justify-between p-3 sm:p-6 pointer-events-none">
+          {/* Top Council Banner */}
+          <div className="flex items-center justify-between pointer-events-auto bg-slate-950/85 border border-cyan-500/40 rounded-2xl px-4 py-2.5 backdrop-blur-md max-w-4xl w-full mx-auto shadow-2xl">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+              <div>
+                <span className="text-xs font-mono font-black text-cyan-300 uppercase tracking-wider block">
+                  Phase 2: 3D Council Chamber
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono hidden sm:block">
+                  Select a target operative below to aim your 3D targeting laser!
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800">
+              <span className="text-xs text-slate-400 font-mono">Deliberation:</span>
+              <span className="font-mono text-sm font-black text-amber-400">{g.timer}s</span>
+            </div>
+          </div>
+
+          {/* Bottom Action & Ability Deck */}
+          <div className="pointer-events-auto w-full max-w-4xl mx-auto bg-slate-950/95 border border-cyan-500/50 rounded-3xl p-4 shadow-2xl backdrop-blur-xl flex flex-col gap-3">
+            {/* Header: Role & Passive */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">Your Clearance:</span>
+                <span className="text-sm font-black uppercase tracking-wider" style={{ color: ROLE_COLORS[myPlayer.role] }}>
+                  {ROLE_ICONS[myPlayer.role]} {myPlayer.role}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-300 font-bold">
+                <span>{abilities.passive.icon}</span>
+                <span>Passive: {abilities.passive.name}</span>
+              </div>
+            </div>
+
+            {/* 3 Active Abilities */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {/* Normal 1 */}
+              <button
+                onClick={() => setSelectedAbility("normal1")}
+                disabled={isAbilityLockedIn}
+                className={`p-2.5 rounded-2xl border text-left transition ${
+                  selectedAbility === "normal1"
+                    ? "bg-cyan-950/90 border-cyan-400 shadow-md shadow-cyan-950"
+                    : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{abilities.normal1.icon}</span>
+                  <div>
+                    <div className="text-xs font-bold text-white">{abilities.normal1.name}</div>
+                    <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.normal1.desc}</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Normal 2 */}
+              <button
+                onClick={() => setSelectedAbility("normal2")}
+                disabled={isAbilityLockedIn}
+                className={`p-2.5 rounded-2xl border text-left transition ${
+                  selectedAbility === "normal2"
+                    ? "bg-cyan-950/90 border-cyan-400 shadow-md shadow-cyan-950"
+                    : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{abilities.normal2.icon}</span>
+                  <div>
+                    <div className="text-xs font-bold text-white">{abilities.normal2.name}</div>
+                    <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.normal2.desc}</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Ultimate */}
+              <button
+                onClick={() => setSelectedAbility("ultimate")}
+                disabled={isAbilityLockedIn}
+                className={`p-2.5 rounded-2xl border text-left transition ${
+                  selectedAbility === "ultimate"
+                    ? "bg-purple-950/90 border-purple-400 shadow-md shadow-purple-950"
+                    : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{abilities.ultimate.icon}</span>
+                  <div>
+                    <div className="text-xs font-bold text-purple-300">{abilities.ultimate.name}</div>
+                    <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.ultimate.desc}</span>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Operative Target Selector (with 3D Laser Targeting) */}
+            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800">
+              <span className="text-[11px] font-mono text-slate-400 font-bold">
+                🎯 Target Operative (Aim 3D Laser):
+              </span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {allPlayers.map((p) => {
+                  const isMe = p.id === myId;
+                  const isSelected = selectedTargetId === p.id;
+                  if (isMe) return null;
+
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedTargetId(p.id)}
+                      disabled={isAbilityLockedIn || p.health === "dead"}
+                      className={`px-3 py-1.5 rounded-2xl border text-xs font-bold flex items-center gap-1.5 shrink-0 transition ${
+                        isSelected
+                          ? "bg-rose-950 border-rose-500 text-rose-200 shadow-md shadow-rose-900"
+                          : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700"
+                      }`}
+                    >
+                      <span>{p.avatar}</span>
+                      <span>{p.name}</span>
+                      <span className="text-[10px]">{HEALTH_ICONS[p.health]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Confirm Ability Button */}
+            <div className="flex items-center justify-between pt-1">
+              <div className="text-xs font-mono text-cyan-300">
+                {selectedTargetId
+                  ? `Laser Locked on: ${allPlayers.find((p) => p.id === selectedTargetId)?.name}`
+                  : "Select an operative to aim"}
+              </div>
+
+              <button
+                onClick={handleConfirmAbility}
+                disabled={isAbilityLockedIn}
+                className={`px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-xl flex items-center gap-2 transition ${
+                  isAbilityLockedIn
+                    ? "bg-emerald-950 border border-emerald-500 text-emerald-300 cursor-not-allowed"
+                    : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 border border-white"
+                }`}
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>{isAbilityLockedIn ? "Ability Locked In ✓" : "Confirm Ability"}</span>
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
 
-    // ---- SHOP AND CRAFTING PHASE ----
+    // 4. SHOP AND CRAFTING OVERLAY (Free Roam + Scrap Looting + Drawer trigger)
     if (phase === "shop_and_craft" || phase === "shop") {
-      if (!myPlayer) return null;
       return (
-        <div className="flex-1 overflow-hidden">
-          <ShopAndCrafting
-            myPlayer={myPlayer}
-            auctionSlots={g.auctionSlots || []}
-            round={g.currentRound}
-            timer={g.timer}
-            selectedSectorId={selectedSectorId}
-            onSelectSector={setSelectedSectorId}
-            tokens={operativeTokens}
-            vaultBreaches={g.vaultBreaches}
-            isFortified={g.domeFortified}
-            onBidAuction={onBidAuction || (() => {})}
-            onBuyItem={onBuyItem}
-            onCraftItem={onCraftItem || onBuyItem}
-            onClaimFreeCards={onClaimFreeCards || (() => {})}
-          />
+        <div className="flex-1 flex flex-col justify-between p-3 pointer-events-none">
+          {/* Top Info Banner */}
+          <div className="flex items-center justify-between pointer-events-auto bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-2 backdrop-blur-md max-w-lg shadow-xl">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <div>
+                <span className="text-xs font-mono font-black text-emerald-300 uppercase tracking-wider block">
+                  Phase 3: Roam, Loot Scraps & Trade
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Walk to Craft Bench in 3D or click button below
+                </span>
+              </div>
+            </div>
+            <div className="text-xs font-mono text-amber-400 font-black px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800">
+              {g.timer}s
+            </div>
+          </div>
+
+          {/* Quick Shop Action Pill */}
+          <div className="pointer-events-auto flex items-center justify-center mb-1">
+            <button
+              onClick={() => setShopDrawerOpen(true)}
+              className="px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-2xl shadow-amber-500/40 border border-white flex items-center gap-2 active:scale-95 transition"
+            >
+              <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
+              <span>Open Black Market & Crafting Bench [B]</span>
+            </button>
+          </div>
         </div>
       );
     }
 
-    // ---- NEWS GAZETTE PHASE ----
+    // 5. NEWS GAZETTE OVERLAY
     if (phase === "news_gazette" || phase === "morning_news") {
       return (
-        <div className="flex-1 overflow-hidden">
-          <NewsGazetteSlideshow
-            slides={g.newsSlides || []}
-            round={g.currentRound}
-            timer={g.timer}
-          />
+        <div className="flex-1 flex items-center justify-center p-4 pointer-events-auto bg-slate-950/60 backdrop-blur-sm overflow-hidden">
+          <NewsGazetteSlideshow slides={g.newsSlides || []} round={g.currentRound} timer={g.timer} />
         </div>
       );
     }
@@ -587,22 +713,36 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
   };
 
   // =========================================================================
-  // MAIN RENDER
+  // MAIN RENDER — 100% 3D WORLD WITH DIEGETIC HUDs
   // =========================================================================
   return (
     <div
       className="flex-1 flex flex-col h-full text-white overflow-hidden select-none relative"
       style={{ backgroundColor: t.bg }}
     >
-      {/* Sci-Fi Grid Backdrop */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `linear-gradient(to right, ${t.gridPattern} 1px, transparent 1px), linear-gradient(to bottom, ${t.gridPattern} 1px, transparent 1px)`,
-          backgroundSize: "28px 28px",
-        }}
-      />
-      {/* C. PHASE TRANSITION ANNOUNCE OVERLAY */}
+      {/* 1. PERSISTENT 3D WORLD — ENTIRE GAME ENGINE (ALWAYS MOUNTED & VISIBLE) */}
+      <div className="absolute inset-0 z-0">
+        <Mastermind3DWorld
+          gameState={g}
+          myId={myId}
+          phase={phase}
+          themePrimary={t.primary}
+          selectedTargetId={selectedTargetId}
+          onMovePlayer={onMovePlayer}
+          onCollectScrap={onCollectScrap}
+          onSelectSkin={onSelectSkin}
+          onUseAbility={onUseAbility}
+          onInteract={(type) => {
+            if (type === "craft" || type === "terminal") {
+              setShopDrawerOpen(true);
+            }
+          }}
+          onOpenShop={() => setShopDrawerOpen(true)}
+          hideDefaultHud={phase === "round_table_meeting" || shopDrawerOpen}
+        />
+      </div>
+
+      {/* 2. PHASE TRANSITION ANNOUNCE OVERLAY */}
       {showPhaseAnnounce && (
         <>
           <style>{`
@@ -613,7 +753,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               100% { opacity: 0; transform: scale(0.3); }
             }
           `}</style>
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md pointer-events-none">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md pointer-events-none">
             <div
               style={{
                 animation: "phaseIn 2.8s ease forwards",
@@ -652,10 +792,10 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
         </>
       )}
 
-      {/* TOP STATUS BAR */}
+      {/* 3. TOP STATUS BAR (Floating Translucent Glass Bar) */}
       <div
         className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 backdrop-blur-md z-30"
-        style={{ backgroundColor: t.surface + "ee", borderBottom: `1px solid ${t.primary}33` }}
+        style={{ backgroundColor: t.surface + "cc", borderBottom: `1px solid ${t.primary}33` }}
       >
         {/* Phase Info */}
         <div className="flex items-center gap-3">
@@ -664,7 +804,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
             <span className={`text-xs font-black uppercase tracking-widest ${phaseInfo.color}`}>
               {phaseInfo.label}
             </span>
-            <span className="text-[10px] font-mono text-slate-500">
+            <span className="text-[10px] font-mono text-slate-400">
               Round {g.currentRound} of {g.totalRounds}
             </span>
           </div>
@@ -689,150 +829,118 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           ))}
         </div>
 
-        {/* Right side: 3D Roam Toggle + Theme buttons + Timer + Host Controls */}
+        {/* Right side: Shop Button + Themes + Timer */}
         <div className="flex items-center gap-2">
-          {/* 3D Roam & Minimap Mode Toggle */}
-          <button
-            onClick={() => setForceWorldView((v) => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-black uppercase tracking-wider transition shadow-lg ${
-              forceWorldView
-                ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 border-white shadow-cyan-500/30"
-                : "bg-slate-900/90 text-cyan-300 border-cyan-500/40 hover:bg-slate-800"
-            }`}
-          >
-            <Compass className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{forceWorldView ? "Phase View" : "3D Roam & Map"}</span>
-            <span className="sm:hidden">{forceWorldView ? "Phase" : "3D"}</span>
-          </button>
+          {/* Shop Button */}
+          {phase === "shop_and_craft" && (
+            <button
+              onClick={() => setShopDrawerOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition"
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>Shop & Craft</span>
+            </button>
+          )}
 
-          {/* A. Theme selector buttons */}
-          <div className="flex items-center gap-1 mr-1">
+          {/* Theme selector dots */}
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setTheme("cyberpunk")}
               title="Cyberpunk"
               style={{
-                width: "20px",
-                height: "20px",
+                width: "18px",
+                height: "18px",
                 borderRadius: "50%",
                 backgroundColor: "#38bdf8",
                 border: theme === "cyberpunk" ? "2px solid #fff" : "2px solid transparent",
-                cursor: "pointer",
-                transition: "border-color 0.2s",
-                fontSize: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
               }}
-            >
-              {theme === "cyberpunk" && <span style={{ fontSize: "8px" }}>✓</span>}
-            </button>
+            />
             <button
               onClick={() => setTheme("dieselpunk")}
               title="Dieselpunk"
               style={{
-                width: "20px",
-                height: "20px",
+                width: "18px",
+                height: "18px",
                 borderRadius: "50%",
                 backgroundColor: "#f97316",
                 border: theme === "dieselpunk" ? "2px solid #fff" : "2px solid transparent",
-                cursor: "pointer",
-                transition: "border-color 0.2s",
-                fontSize: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
               }}
-            >
-              {theme === "dieselpunk" && <span style={{ fontSize: "8px" }}>✓</span>}
-            </button>
+            />
             <button
               onClick={() => setTheme("classic")}
-              title="Classic"
+              title="Obsidian"
               style={{
-                width: "20px",
-                height: "20px",
+                width: "18px",
+                height: "18px",
                 borderRadius: "50%",
-                backgroundColor: "#8b5cf6",
+                backgroundColor: "#a855f7",
                 border: theme === "classic" ? "2px solid #fff" : "2px solid transparent",
-                cursor: "pointer",
-                transition: "border-color 0.2s",
-                fontSize: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
               }}
-            >
-              {theme === "classic" && <span style={{ fontSize: "8px" }}>✓</span>}
-            </button>
+            />
           </div>
 
-          {/* Timer */}
-          <div
-            className="flex items-center gap-2 px-3 py-1 rounded-xl"
-            style={{ backgroundColor: t.border + "88", border: `1px solid ${t.border}` }}
-          >
+          {/* Timer Badge */}
+          <div className="flex items-center gap-2 px-3 py-1 rounded-2xl bg-slate-900 border border-slate-800">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-mono text-sm font-black text-amber-300">{g.timer}s</span>
+            <span className="font-mono text-xs font-black text-amber-300">{g.timer}s</span>
           </div>
 
+          {/* Host Skip button */}
           {isHost && onSkipTimer && (
             <button
               onClick={onSkipTimer}
-              className="p-2 rounded-xl transition-all"
-              style={{
-                backgroundColor: t.border + "88",
-                border: `1px solid ${t.border}`,
-                color: "#cbd5e1",
-              }}
-              title="Host Skip Timer"
+              className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 border border-slate-700 flex items-center gap-1"
             >
-              <FastForward className="w-3.5 h-3.5" />
+              <FastForward className="w-3 h-3 text-amber-400" />
+              <span className="hidden sm:inline">Skip</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* SIDE PLAYER ROSTER + MAIN CONTENT */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Operative Roster */}
-        <div
-          className="hidden lg:flex flex-col w-16 xl:w-20 items-center py-3 gap-2 overflow-y-auto flex-shrink-0"
-          style={{ backgroundColor: t.surface + "cc", borderRight: `1px solid ${t.border}66` }}
-        >
-          {allPlayers.map((p) => (
-            <div
-              key={p.id}
-              className="flex flex-col items-center gap-1 px-1"
-              title={`${p.name} • ${p.role} • ${p.health}`}
-            >
-              <div
-                className="relative w-9 h-9 rounded-xl flex items-center justify-center text-lg border transition-all"
-                style={{
-                  borderColor: p.id === myId ? ROLE_COLORS[p.role] : t.border,
-                  backgroundColor: (p.id === myId ? ROLE_COLORS[p.role] : t.surface) + "33",
-                  opacity: p.health === "dead" ? 0.35 : 1,
-                }}
-              >
-                <span>{p.avatar}</span>
-                {p.health === "dead" && (
-                  <span className="absolute inset-0 flex items-center justify-center text-xs rounded-xl bg-black/70">💀</span>
-                )}
-                {p.health === "wounded" && (
-                  <span className="absolute -top-0.5 -right-0.5 text-[10px]">🩸</span>
-                )}
-              </div>
-              <span className="text-[8px] font-mono text-slate-500 max-w-full text-center leading-tight truncate w-14">
-                {p.id === myId ? "YOU" : p.name.split("-")[1] || p.name.slice(0, 4)}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* MAIN PHASE CONTENT */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {renderPhaseContent()}
-        </div>
+      {/* 4. PHASE HUD / INTERACTIVE 3D OVERLAYS */}
+      <div className="relative z-10 flex-1 flex flex-col pointer-events-none overflow-hidden">
+        {renderPhaseOverlay()}
       </div>
+
+      {/* 5. SLIDE-IN BLACK MARKET & CRAFTING DRAWER */}
+      {shopDrawerOpen && myPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/70 backdrop-blur-sm pointer-events-auto">
+          <div className="w-full max-w-4xl h-full bg-slate-900 border-l border-cyan-500/40 p-4 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-amber-400" />
+                <span className="text-sm font-black uppercase tracking-wider text-cyan-300">
+                  Facility Black Market & Crafting Lab
+                </span>
+              </div>
+              <button
+                onClick={() => setShopDrawerOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-rose-900/80 flex items-center justify-center text-slate-300 hover:text-white font-bold transition"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ShopAndCrafting
+                myPlayer={myPlayer}
+                auctionSlots={g.auctionSlots || []}
+                round={g.currentRound}
+                timer={g.timer}
+                selectedSectorId={selectedSectorId}
+                onSelectSector={setSelectedSectorId}
+                tokens={operativeTokens}
+                vaultBreaches={g.vaultBreaches}
+                isFortified={g.domeFortified}
+                onBidAuction={onBidAuction || (() => {})}
+                onBuyItem={onBuyItem}
+                onCraftItem={onCraftItem || onBuyItem}
+                onClaimFreeCards={onClaimFreeCards || (() => {})}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

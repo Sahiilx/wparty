@@ -27,6 +27,7 @@ import {
   HelpCircle,
   X,
   Target,
+  ShoppingCart,
 } from "lucide-react";
 
 export type CharacterSkin =
@@ -50,22 +51,29 @@ export const SKIN_LIST: Array<{ id: CharacterSkin; name: string; icon: string; d
   { id: "cosmo", name: "Retro Cosmonaut", icon: "🧑‍🚀", desc: "Golden reflective bubble helmet & twin oxygen thruster pack" },
 ];
 
-export interface ThrowEvent {
+export interface ActiveProjectile3D {
   id: string;
-  fromId: string;
-  toId?: string;
+  mesh: THREE.Object3D;
+  start: THREE.Vector3;
+  target: THREE.Vector3;
+  startTime: number;
+  duration: number;
   item: "tomato" | "balloon" | "popper" | "duck" | "bomb";
-  startX: number;
-  startZ: number;
-  targetX: number;
-  targetZ: number;
-  progress: number;
+}
+
+export interface ActiveSplash3D {
+  group: THREE.Group;
+  particles: Array<{ mesh: THREE.Mesh; velocity: THREE.Vector3 }>;
+  startTime: number;
+  duration: number;
 }
 
 interface Mastermind3DWorldProps {
   gameState: MastermindGameState;
   myId: string;
+  phase?: string;
   themePrimary?: string;
+  selectedTargetId?: string | null;
   onMovePlayer?: (x: number, z: number, rotation: number, isMoving: boolean, skin?: string, sectorId?: string) => void;
   onCollectScrap?: (scrapId: string) => void;
   onSelectSkin?: (skin: string) => void;
@@ -73,12 +81,16 @@ interface Mastermind3DWorldProps {
   onInteract?: (type: "table" | "craft" | "terminal" | "scrap", entityId?: string) => void;
   onTriggerEmote?: (emote: string) => void;
   onThrowItem?: (item: "tomato" | "balloon" | "popper" | "duck" | "bomb", targetId?: string) => void;
+  onOpenShop?: () => void;
+  hideDefaultHud?: boolean;
 }
 
 export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   gameState,
   myId,
+  phase = "shop_and_craft",
   themePrimary = "#00f0ff",
+  selectedTargetId,
   onMovePlayer,
   onCollectScrap,
   onSelectSkin,
@@ -86,6 +98,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   onInteract,
   onTriggerEmote,
   onThrowItem,
+  onOpenShop,
+  hideDefaultHud = false,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const myPlayer = gameState.players[myId];
@@ -119,6 +133,13 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   // Keyboard keys pressed
   const keysPressedRef = useRef<Record<string, boolean>>({});
 
+  // Trigger 3D Throw from React to Three.js
+  const throwQueueRef = useRef<Array<{
+    fromPos: THREE.Vector3;
+    toPos: THREE.Vector3;
+    item: "tomato" | "balloon" | "popper" | "duck" | "bomb";
+  }>>([]);
+
   // Sync Skin to Server
   const handleChooseSkin = (skin: CharacterSkin) => {
     setCurrentSkin(skin);
@@ -140,37 +161,53 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     }, 2800);
   };
 
-  // Throw Harmless Item
+  // Throw 3D Harmless Item
   const handleThrow = (item: "tomato" | "balloon" | "popper" | "duck" | "bomb") => {
     setThrowWheelOpen(false);
-    // Find closest player to throw at
+    // Find target player
     const otherPlayers = Object.entries(gameState.players).filter(([id]) => id !== myId);
-    let closestId: string | undefined;
-    let closestDist = Infinity;
-    otherPlayers.forEach(([id, p]) => {
-      const d = Math.hypot((p.x ?? 0) - localPosRef.current.x, (p.z ?? 0) - localPosRef.current.z);
-      if (d < closestDist) {
-        closestDist = d;
-        closestId = id;
-      }
-    });
+    let targetPlayer = otherPlayers[0]?.[1];
+    let targetPid = otherPlayers[0]?.[0];
+
+    if (selectedTargetId && gameState.players[selectedTargetId]) {
+      targetPlayer = gameState.players[selectedTargetId];
+      targetPid = selectedTargetId;
+    } else {
+      // Find closest player
+      let closestDist = Infinity;
+      otherPlayers.forEach(([id, p]) => {
+        const d = Math.hypot((p.x ?? 0) - localPosRef.current.x, (p.z ?? 0) - localPosRef.current.z);
+        if (d < closestDist) {
+          closestDist = d;
+          targetPlayer = p;
+          targetPid = id;
+        }
+      });
+    }
+
+    const start = new THREE.Vector3(localPosRef.current.x, 1.2, localPosRef.current.z);
+    const target = targetPlayer
+      ? new THREE.Vector3(targetPlayer.x ?? 0, 1.2, targetPlayer.z ?? 0)
+      : new THREE.Vector3(0, 1.2, 0);
+
+    throwQueueRef.current.push({ fromPos: start, toPos: target, item });
 
     if (onThrowItem) {
-      onThrowItem(item, closestId);
-    } else {
-      const emojiMap = { tomato: "🍅", balloon: "🎈", popper: "🎉", duck: "🦆", bomb: "💣" };
-      handleSendEmote(emojiMap[item]);
+      onThrowItem(item, targetPid);
     }
   };
 
   // =========================================================================
-  // KEYBOARD CONTROLS (WASD / Arrows)
+  // KEYBOARD CONTROLS (WASD / Arrows / E to interact / B for shop)
   // =========================================================================
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       keysPressedRef.current[e.code] = true;
       if (e.code === "KeyE" && nearbyInteractable) {
         if (onInteract) onInteract(nearbyInteractable.type, nearbyInteractable.id);
+      }
+      if (e.code === "KeyB" && onOpenShop) {
+        onOpenShop();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -182,7 +219,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [nearbyInteractable, onInteract]);
+  }, [nearbyInteractable, onInteract, onOpenShop]);
 
   // =========================================================================
   // VIRTUAL JOYSTICK TOUCH HANDLERS (Mobile Friendly)
@@ -238,15 +275,15 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     const container = mountRef.current;
     if (!container) return;
 
-    const width = container.clientWidth || 800;
-    const height = container.clientHeight || 600;
+    const width = container.clientWidth || window.innerWidth;
+    const height = container.clientHeight || window.innerHeight;
 
     // 1. Scene, Camera & Renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x030712);
-    scene.fog = new THREE.FogExp2(0x030712, 0.012);
+    scene.background = new THREE.Color(0x020617);
+    scene.fog = new THREE.FogExp2(0x020617, 0.012);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 180);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
     camera.position.set(0, 19, 17);
     camera.lookAt(0, 0, 0);
 
@@ -259,8 +296,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     container.innerHTML = "";
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting System
-    const ambientLight = new THREE.AmbientLight(0x1e293b, 2.5);
+    // 2. Dynamic Lighting System
+    const ambientLight = new THREE.AmbientLight(0x1e293b, 2.6);
     scene.add(ambientLight);
 
     const mainCenterLight = new THREE.PointLight(0x00f0ff, 5.0, 150);
@@ -268,47 +305,39 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     mainCenterLight.castShadow = true;
     scene.add(mainCenterLight);
 
-    const northLight = new THREE.PointLight(0x38bdf8, 3.0, 80);
-    northLight.position.set(0, 8, -20);
+    const northLight = new THREE.PointLight(0x38bdf8, 3.2, 90);
+    northLight.position.set(0, 9, -20);
     scene.add(northLight);
 
-    const southLight = new THREE.PointLight(0xf59e0b, 3.0, 80);
-    southLight.position.set(0, 8, 20);
+    const southLight = new THREE.PointLight(0xf59e0b, 3.2, 90);
+    southLight.position.set(0, 9, 20);
     scene.add(southLight);
 
-    const westLight = new THREE.PointLight(0x10b981, 3.0, 80);
-    westLight.position.set(-20, 8, 0);
+    const westLight = new THREE.PointLight(0x10b981, 3.2, 90);
+    westLight.position.set(-20, 9, 0);
     scene.add(westLight);
 
-    const eastLight = new THREE.PointLight(0xeab308, 3.0, 80);
-    eastLight.position.set(20, 8, 0);
+    const eastLight = new THREE.PointLight(0xeab308, 3.2, 90);
+    eastLight.position.set(20, 9, 0);
     scene.add(eastLight);
 
     // 3. UNIFIED FACILITY FOUNDATION (Outer Boundary)
-    const foundationGeo = new THREE.BoxGeometry(78, 0.4, 78);
+    const foundationGeo = new THREE.BoxGeometry(80, 0.4, 80);
     const foundationMat = new THREE.MeshPhongMaterial({
       color: 0x050d1a,
-      shininess: 90,
+      shininess: 95,
     });
     const foundationMesh = new THREE.Mesh(foundationGeo, foundationMat);
     foundationMesh.position.set(0, 0.1, 0);
     foundationMesh.receiveShadow = true;
     scene.add(foundationMesh);
 
-    // Grid Overlay on floor
-    const gridHelper = new THREE.GridHelper(76, 38, 0x0284c7, 0x0e2744);
+    // Neon Floor Grid
+    const gridHelper = new THREE.GridHelper(78, 39, 0x0284c7, 0x0a1f38);
     gridHelper.position.y = 0.32;
     scene.add(gridHelper);
 
-    // 4. ARCHITECTURAL FACILITY ROOMS & WALLS (EXACTLY MATCHING BLUEPRINT)
-    // - Central Lockdown Dome (circle)
-    // - Ring corridor (circle)
-    // - 4 Vaults V1, V2, V3, V4 (circles) with RED blast door gates
-    // - Central square frame enclosing the ring
-    // - Axial Corridors (North, South, East, West)
-    // - Northwest Doctor's Clinic dome
-    // - Southeast Gas Chamber dome
-    // - Quadrant research rooms with doorways
+    // 4. ARCHITECTURAL FACILITY ROOMS & WALLS (EXACTLY MATCHING BLUEPRINTS)
     OAKHAVEN_SECTORS.forEach((sec) => {
       const isDome = sec.shape === "circle";
       const roomGroup = new THREE.Group();
@@ -369,7 +398,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
       scene.add(roomGroup);
 
-      // Doorway Portals
+      // Doorway Portals & Red Blast Gates
       sec.doors.forEach((door) => {
         const isRedGate = door.isLocked;
         const archGeo = new THREE.BoxGeometry(isRedGate ? 2.6 : 1.8, 2.4, 0.45);
@@ -414,20 +443,26 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     tableEdge.position.set(0, 1.2, 0);
     scene.add(tableEdge);
 
-    // Center spinning holographic crystal
+    // Center spinning holographic crystal (The Panacea Data Matrix)
     const crystalGeo = new THREE.OctahedronGeometry(0.55, 0);
     const crystalMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true });
     const crystalMesh = new THREE.Mesh(crystalGeo, crystalMat);
     crystalMesh.position.set(0, 1.9, 0);
     scene.add(crystalMesh);
 
-    // Chairs around the council table (6 ergonomic swivel seats)
-    const chairCount = 6;
+    // Chairs around the council table (8 ergonomic cyber chairs)
+    const chairCount = 8;
+    const chairPositions: Array<{ x: number; z: number; rotation: number }> = [];
     for (let i = 0; i < chairCount; i++) {
       const angle = (i * 2 * Math.PI) / chairCount;
+      const cx = Math.cos(angle) * 5.2;
+      const cz = Math.sin(angle) * 5.2;
+      const rotY = -angle + Math.PI / 2;
+      chairPositions.push({ x: cx, z: cz, rotation: rotY });
+
       const chairGroup = new THREE.Group();
-      chairGroup.position.set(Math.cos(angle) * 5.2, 0.35, Math.sin(angle) * 5.2);
-      chairGroup.rotation.y = -angle + Math.PI / 2;
+      chairGroup.position.set(cx, 0.35, cz);
+      chairGroup.rotation.y = rotY;
 
       const seatGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.12, 16);
       const seatMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
@@ -443,7 +478,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       scene.add(chairGroup);
     }
 
-    // 6. CRAFTING BENCH & DEPOT STATION (In Tactical Workshop Sector)
+    // 6. 3D CRAFTING BENCH & BLACK MARKET DEPOT
     const craftBenchGroup = new THREE.Group();
     craftBenchGroup.position.set(16, 0.35, -16);
     const benchGeo = new THREE.BoxGeometry(3.5, 1.0, 1.8);
@@ -459,6 +494,22 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     craftHolo.position.y = 1.6;
     craftBenchGroup.add(craftHolo);
     scene.add(craftBenchGroup);
+
+    // Black Market Depot Terminal (In East Wing)
+    const marketTerminalGroup = new THREE.Group();
+    marketTerminalGroup.position.set(22, 0.35, -4);
+    const termGeo = new THREE.BoxGeometry(2.0, 2.2, 1.2);
+    const termMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.2 });
+    const termMesh = new THREE.Mesh(termGeo, termMat);
+    termMesh.position.y = 1.1;
+    marketTerminalGroup.add(termMesh);
+
+    const screenGeo = new THREE.PlaneGeometry(1.6, 0.9);
+    const screenMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide });
+    const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+    screenMesh.position.set(0, 1.5, 0.62);
+    marketTerminalGroup.add(screenMesh);
+    scene.add(marketTerminalGroup);
 
     // 7. INTERACTIVE WORLD SCRAP CUBES (3D Floating Resource Loot)
     const scrapMeshes: Record<string, THREE.Group> = {};
@@ -496,7 +547,22 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       scrapMeshes[s.id] = group;
     });
 
-    // 8. TAP-TO-MOVE DESTINATION BEACON RING
+    // 8. 3D LASER TARGETING LINE
+    const laserLineMat = new THREE.LineBasicMaterial({
+      color: 0xef4444,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const laserLineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+    ]);
+    const laserLine = new THREE.Line(laserLineGeo, laserLineMat);
+    laserLine.visible = false;
+    scene.add(laserLine);
+
+    // 9. TAP-TO-MOVE DESTINATION BEACON RING
     const beaconGeo = new THREE.RingGeometry(0.5, 0.8, 24);
     const beaconMat = new THREE.MeshBasicMaterial({
       color: 0x00f0ff,
@@ -509,7 +575,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     beaconMesh.position.y = 0.36;
     scene.add(beaconMesh);
 
-    // 9. 3D CHARACTERS POOL (Fall-Guys / Mecha-Chameleon models with 8 Cute Skins)
+    // 10. 3D CHARACTERS POOL (Fall-Guys / Mecha-Chameleon models with 8 Cute Skins)
     const characterMeshes: Record<
       string,
       {
@@ -625,7 +691,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         tailMesh.rotation.x = -Math.PI / 3;
         charGroup.add(tailMesh);
 
-        // 3 neon dorsal spikes
         for (let s = 0; s < 3; s++) {
           const spikeGeo = new THREE.ConeGeometry(0.08, 0.18, 4);
           const spikeMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
@@ -715,24 +780,114 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     };
 
     // Instantiate all characters from gameState
-    Object.entries(gameState.players).forEach(([pid, p]) => {
+    const playerList = Object.entries(gameState.players);
+    playerList.forEach(([pid, p], idx) => {
       const isMe = pid === myId;
       const model = buildCharacterModel(p, isMe);
-      const px = p.x ?? (isMe ? 0 : Math.cos(Number(pid.slice(-1) || 0)) * 6);
-      const pz = p.z ?? (isMe ? 0 : Math.sin(Number(pid.slice(-1) || 0)) * 6);
-      model.group.position.set(px, 0, pz);
+      const isMeeting = phase === "round_table_meeting";
+
+      let px = p.x ?? 0;
+      let pz = p.z ?? 0;
+      let rot = p.rotation ?? 0;
+
+      if (isMeeting) {
+        // Seat players at council table
+        const seat = chairPositions[idx % chairPositions.length];
+        if (seat) {
+          px = seat.x;
+          pz = seat.z;
+          rot = seat.rotation;
+        }
+      }
+
+      model.group.position.set(px, isMeeting ? 0.35 : 0, pz);
+      model.group.rotation.y = rot;
       characterMeshes[pid] = model;
 
       if (isMe) {
-        localPosRef.current = { x: px, z: pz, rotation: p.rotation ?? 0, isMoving: false };
+        localPosRef.current = { x: px, z: pz, rotation: rot, isMoving: false };
       }
     });
 
-    // 10. TAP / CLICK TO MOVE RAYCASTING
+    // 11. ACTIVE 3D PROJECTILES & SPLASH PARTICLES POOLS
+    const activeProjectiles: ActiveProjectile3D[] = [];
+    const activeSplashes: ActiveSplash3D[] = [];
+
+    const createProjectileMesh = (item: string) => {
+      if (item === "tomato") {
+        const geo = new THREE.SphereGeometry(0.25, 12, 12);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+        return new THREE.Mesh(geo, mat);
+      }
+      if (item === "balloon") {
+        const geo = new THREE.SphereGeometry(0.3, 12, 12);
+        geo.scale(1, 1.25, 1);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.1, transparent: true, opacity: 0.85 });
+        return new THREE.Mesh(geo, mat);
+      }
+      if (item === "popper") {
+        const geo = new THREE.ConeGeometry(0.2, 0.45, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xa855f7 });
+        return new THREE.Mesh(geo, mat);
+      }
+      if (item === "duck") {
+        const group = new THREE.Group();
+        const bodyGeo = new THREE.SphereGeometry(0.22, 10, 10);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2 });
+        group.add(new THREE.Mesh(bodyGeo, bodyMat));
+        const headGeo = new THREE.SphereGeometry(0.14, 8, 8);
+        const head = new THREE.Mesh(headGeo, bodyMat);
+        head.position.set(0, 0.18, 0.12);
+        group.add(head);
+        return group;
+      }
+      // bomb
+      const geo = new THREE.SphereGeometry(0.26, 12, 12);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
+      return new THREE.Mesh(geo, mat);
+    };
+
+    const triggerSplashEffect = (pos: THREE.Vector3, item: string) => {
+      const splashGroup = new THREE.Group();
+      splashGroup.position.copy(pos);
+      const particles: Array<{ mesh: THREE.Mesh; velocity: THREE.Vector3 }> = [];
+
+      let splashColor = 0xef4444;
+      if (item === "balloon") splashColor = 0x06b6d4;
+      if (item === "popper") splashColor = 0xf59e0b;
+      if (item === "duck") splashColor = 0xfacc15;
+      if (item === "bomb") splashColor = 0x71717a;
+
+      for (let i = 0; i < 14; i++) {
+        const pGeo = new THREE.SphereGeometry(0.06, 6, 6);
+        const pMat = new THREE.MeshBasicMaterial({ color: splashColor });
+        const pMesh = new THREE.Mesh(pGeo, pMat);
+        splashGroup.add(pMesh);
+
+        const velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 4.5,
+          Math.random() * 3.5 + 1.0,
+          (Math.random() - 0.5) * 4.5
+        );
+        particles.push({ mesh: pMesh, velocity });
+      }
+
+      scene.add(splashGroup);
+      activeSplashes.push({
+        group: splashGroup,
+        particles,
+        startTime: performance.now(),
+        duration: 650,
+      });
+    };
+
+    // 12. TAP / CLICK TO MOVE RAYCASTING
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const handleCanvasClick = (e: MouseEvent | TouchEvent) => {
+      if (phase === "round_table_meeting") return; // Keep players seated during council meeting
+
       const rect = container.getBoundingClientRect();
       const clientX = "touches" in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
       const clientY = "touches" in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
@@ -745,12 +900,10 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-        // Clamp inside facility bounds
         const tx = Math.max(-36, Math.min(36, point.x));
         const tz = Math.max(-36, Math.min(36, point.z));
         targetPosRef.current = { x: tx, z: tz };
 
-        // Position beacon ring
         beaconMesh.position.set(tx, 0.36, tz);
         beaconMesh.material.opacity = 0.9;
         beaconMesh.scale.set(1, 1, 1);
@@ -759,7 +912,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
     container.addEventListener("click", handleCanvasClick);
 
-    // 11. MAIN ANIMATION & GAME LOOP
+    // 13. MAIN ANIMATION & GAME LOOP
     let animId: number;
     let clock = new THREE.Clock();
     let lastNetworkSync = 0;
@@ -768,6 +921,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       animId = requestAnimationFrame(animate);
       const dt = clock.getDelta();
       const elapsedTime = clock.getElapsedTime();
+      const now = performance.now();
 
       // Spin crystal & craft hologram
       crystalMesh.rotation.y += 0.8 * dt;
@@ -790,40 +944,138 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         beaconMesh.scale.addScalar(0.8 * dt);
       }
 
-      // --- LOCAL PLAYER MOVEMENT CALCULATION ---
+      // Check Throw Queue and Spawn 3D Projectiles
+      while (throwQueueRef.current.length > 0) {
+        const itemEvent = throwQueueRef.current.shift()!;
+        const mesh = createProjectileMesh(itemEvent.item);
+        mesh.position.copy(itemEvent.fromPos);
+        scene.add(mesh);
+
+        activeProjectiles.push({
+          id: String(Math.random()),
+          mesh,
+          start: itemEvent.fromPos,
+          target: itemEvent.toPos,
+          startTime: now,
+          duration: 750,
+          item: itemEvent.item,
+        });
+      }
+
+      // Update 3D Projectiles
+      for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+        const p = activeProjectiles[i];
+        const progress = Math.min(1.0, (now - p.startTime) / p.duration);
+
+        // Parabolic flight arc
+        p.mesh.position.x = THREE.MathUtils.lerp(p.start.x, p.target.x, progress);
+        p.mesh.position.z = THREE.MathUtils.lerp(p.start.z, p.target.z, progress);
+        const arcY = Math.sin(progress * Math.PI) * 4.2;
+        p.mesh.position.y = THREE.MathUtils.lerp(p.start.y, p.target.y, progress) + arcY;
+
+        p.mesh.rotation.x += 8.0 * dt;
+        p.mesh.rotation.y += 5.0 * dt;
+
+        if (progress >= 1.0) {
+          triggerSplashEffect(p.target, p.item);
+          scene.remove(p.mesh);
+          activeProjectiles.splice(i, 1);
+        }
+      }
+
+      // Update Splash Particles
+      for (let sIdx = activeSplashes.length - 1; sIdx >= 0; sIdx--) {
+        const splash = activeSplashes[sIdx];
+        const spProg = (now - splash.startTime) / splash.duration;
+
+        splash.particles.forEach((part) => {
+          part.mesh.position.addScaledVector(part.velocity, dt);
+          part.velocity.y -= 9.8 * dt; // gravity
+        });
+
+        if (spProg >= 1.0) {
+          scene.remove(splash.group);
+          activeSplashes.splice(sIdx, 1);
+        }
+      }
+
+      // Update 3D Laser Targeting Line
+      if (selectedTargetId && characterMeshes[selectedTargetId] && characterMeshes[myId]) {
+        const myP = characterMeshes[myId].group.position;
+        const targetP = characterMeshes[selectedTargetId].group.position;
+        const pts = [
+          new THREE.Vector3(myP.x, 1.25, myP.z),
+          new THREE.Vector3(targetP.x, 1.25, targetP.z),
+        ];
+        laserLine.geometry.setFromPoints(pts);
+        laserLine.visible = true;
+      } else {
+        laserLine.visible = false;
+      }
+
+      // --- CAMERA POSITIONING BASED ON GAME PHASE ---
+      if (phase === "round_table_meeting") {
+        // Orbit close to council round table
+        const targetCamX = Math.sin(elapsedTime * 0.1) * 3.0;
+        const targetCamZ = 9.5;
+        camera.position.x += (targetCamX - camera.position.x) * 0.05;
+        camera.position.y += (6.8 - camera.position.y) * 0.05;
+        camera.position.z += (targetCamZ - camera.position.z) * 0.05;
+        camera.lookAt(0, 1.1, 0);
+      } else if (phase === "role_reveal") {
+        // Framing the central chamber
+        camera.position.x += (0 - camera.position.x) * 0.05;
+        camera.position.y += (8.5 - camera.position.y) * 0.05;
+        camera.position.z += (11.5 - camera.position.z) * 0.05;
+        camera.lookAt(0, 1.2, 0);
+      } else {
+        // Follow-camera in free-roam mode
+        const targetCamX = localPosRef.current.x;
+        const targetCamZ = localPosRef.current.z + 17;
+        camera.position.x += (targetCamX - camera.position.x) * 0.08;
+        camera.position.y += (19 - camera.position.y) * 0.08;
+        camera.position.z += (targetCamZ - camera.position.z) * 0.08;
+        camera.lookAt(localPosRef.current.x, 0.8, localPosRef.current.z);
+      }
+
+      // --- LOCAL PLAYER MOVEMENT CALCULATION (Allowed when not locked in meeting) ---
+      const canMoveFreely = phase !== "round_table_meeting";
+
       let moveX = 0;
       let moveZ = 0;
 
-      // A. Joystick Input
-      if (joystickActive) {
-        moveX = joystickDirRef.current.x;
-        moveZ = joystickDirRef.current.y;
-      }
+      if (canMoveFreely) {
+        // A. Joystick Input
+        if (joystickActive) {
+          moveX = joystickDirRef.current.x;
+          moveZ = joystickDirRef.current.y;
+        }
 
-      // B. Keyboard WASD Input
-      const keys = keysPressedRef.current;
-      if (keys["KeyW"] || keys["ArrowUp"]) moveZ -= 1;
-      if (keys["KeyS"] || keys["ArrowDown"]) moveZ += 1;
-      if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
-      if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
+        // B. Keyboard WASD Input
+        const keys = keysPressedRef.current;
+        if (keys["KeyW"] || keys["ArrowUp"]) moveZ -= 1;
+        if (keys["KeyS"] || keys["ArrowDown"]) moveZ += 1;
+        if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
+        if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
 
-      // C. Tap-to-move navigation
-      if (targetPosRef.current && moveX === 0 && moveZ === 0) {
-        const dx = targetPosRef.current.x - localPosRef.current.x;
-        const dz = targetPosRef.current.z - localPosRef.current.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist > 0.4) {
-          moveX = dx / dist;
-          moveZ = dz / dist;
-        } else {
-          targetPosRef.current = null;
+        // C. Tap-to-move navigation
+        if (targetPosRef.current && moveX === 0 && moveZ === 0) {
+          const dx = targetPosRef.current.x - localPosRef.current.x;
+          const dz = targetPosRef.current.z - localPosRef.current.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > 0.4) {
+            moveX = dx / dist;
+            moveZ = dz / dist;
+          } else {
+            targetPosRef.current = null;
+          }
         }
       }
 
       const isMoving = Math.hypot(moveX, moveZ) > 0.05;
       const speed = 7.5;
 
-      if (isMoving) {
+      if (isMoving && canMoveFreely) {
         const mag = Math.hypot(moveX, moveZ);
         const normX = (moveX / mag) * speed * dt;
         const normZ = (moveZ / mag) * speed * dt;
@@ -839,12 +1091,14 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       // Update Local Player 3D Mesh
       const myModel = characterMeshes[myId];
       if (myModel) {
-        myModel.group.position.x = localPosRef.current.x;
-        myModel.group.position.z = localPosRef.current.z;
-        myModel.group.rotation.y = localPosRef.current.rotation;
+        if (canMoveFreely) {
+          myModel.group.position.x = localPosRef.current.x;
+          myModel.group.position.z = localPosRef.current.z;
+          myModel.group.rotation.y = localPosRef.current.rotation;
+        }
 
         // Cute Waddling Animation while walking (Fall Guys style)
-        if (isMoving) {
+        if (isMoving && canMoveFreely) {
           myModel.body.rotation.z = Math.sin(elapsedTime * 14) * 0.18;
           myModel.group.position.y = Math.abs(Math.sin(elapsedTime * 14)) * 0.18;
           if (myModel.tail) {
@@ -852,7 +1106,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           }
         } else {
           myModel.body.rotation.z = 0;
-          myModel.group.position.y = Math.sin(elapsedTime * 2.5) * 0.04;
+          myModel.group.position.y = phase === "round_table_meeting" ? 0.35 : Math.sin(elapsedTime * 2.5) * 0.04;
           if (myModel.tail) {
             myModel.tail.rotation.z = Math.sin(elapsedTime * 3) * 0.15;
           }
@@ -862,24 +1116,24 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         const blink = Math.sin(elapsedTime * 1.8) > 0.96 ? 0.1 : 1.0;
         myModel.leftEye.scale.y = blink;
         myModel.rightEye.scale.y = blink;
-
-        // Smooth Camera Follow
-        const targetCamX = localPosRef.current.x;
-        const targetCamZ = localPosRef.current.z + 17;
-        camera.position.x += (targetCamX - camera.position.x) * 0.08;
-        camera.position.z += (targetCamZ - camera.position.z) * 0.08;
-        camera.lookAt(localPosRef.current.x, 0.8, localPosRef.current.z);
       }
 
       // Update Remote Players from gameState
-      Object.entries(gameState.players).forEach(([pid, p]) => {
+      playerList.forEach(([pid, p], idx) => {
         if (pid === myId) return;
         let model = characterMeshes[pid];
         if (!model) {
           model = buildCharacterModel(p, false);
           characterMeshes[pid] = model;
         }
-        if (p.x !== undefined && p.z !== undefined) {
+
+        if (phase === "round_table_meeting") {
+          const seat = chairPositions[idx % chairPositions.length];
+          if (seat) {
+            model.group.position.set(seat.x, 0.35, seat.z);
+            model.group.rotation.y = seat.rotation;
+          }
+        } else if (p.x !== undefined && p.z !== undefined) {
           model.group.position.x += (p.x - model.group.position.x) * 0.15;
           model.group.position.z += (p.z - model.group.position.z) * 0.15;
           if (p.rotation !== undefined) {
@@ -896,23 +1150,27 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       });
 
       // Check Scrap Cube Proximity & Loot Collection
-      scraps.forEach((s) => {
-        const dist = Math.hypot(s.x - localPosRef.current.x, s.z - localPosRef.current.z);
-        if (dist < 1.6) {
-          if (onCollectScrap) onCollectScrap(s.id);
-        }
-      });
+      if (canMoveFreely) {
+        scraps.forEach((s) => {
+          const dist = Math.hypot(s.x - localPosRef.current.x, s.z - localPosRef.current.z);
+          if (dist < 1.6) {
+            if (onCollectScrap) onCollectScrap(s.id);
+          }
+        });
+      }
 
       // Check Proximity to Points of Interest
       const distToCenterTable = Math.hypot(localPosRef.current.x, localPosRef.current.z);
       const distToCraftBench = Math.hypot(localPosRef.current.x - 16, localPosRef.current.z - (-16));
+      const distToMarketTerminal = Math.hypot(localPosRef.current.x - 22, localPosRef.current.z - (-4));
 
       if (distToCenterTable < 4.8) {
         setNearbyInteractable({ type: "table", label: "Council Round Table" });
       } else if (distToCraftBench < 3.8) {
         setNearbyInteractable({ type: "craft", label: "Crafting Bench & Depot" });
+      } else if (distToMarketTerminal < 3.2) {
+        setNearbyInteractable({ type: "terminal", label: "Black Market Terminal" });
       } else {
-        // Check scrap proximity
         let foundScrap: { id: string; label: string } | null = null;
         scraps.forEach((s) => {
           const d = Math.hypot(s.x - localPosRef.current.x, s.z - localPosRef.current.z);
@@ -928,7 +1186,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         }
       }
 
-      // Detect Current Sector Name from coordinates
+      // Detect Current Sector Name
       let foundSecName = "Lockdown Room (Central Core)";
       OAKHAVEN_SECTORS.forEach((sec) => {
         if (sec.shape === "circle") {
@@ -952,8 +1210,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       setCurrentSectorName(foundSecName);
 
       // Network Sync (Throttle to 50ms)
-      const now = performance.now();
-      if (now - lastNetworkSync > 50 && onMovePlayer) {
+      const curNow = performance.now();
+      if (curNow - lastNetworkSync > 50 && onMovePlayer && canMoveFreely) {
         onMovePlayer(
           Math.round(localPosRef.current.x * 100) / 100,
           Math.round(localPosRef.current.z * 100) / 100,
@@ -962,7 +1220,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           currentSkin,
           foundSecName
         );
-        lastNetworkSync = now;
+        lastNetworkSync = curNow;
       }
 
       renderer.render(scene, camera);
@@ -987,7 +1245,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       cancelAnimationFrame(animId);
       renderer.dispose();
     };
-  }, [gameState.worldScraps, myId, currentSkin, onMovePlayer, onCollectScrap]);
+  }, [gameState.worldScraps, myId, currentSkin, phase, selectedTargetId, onMovePlayer, onCollectScrap]);
 
   return (
     <div className="relative w-full h-full select-none overflow-hidden bg-slate-950 text-white font-sans">
@@ -1044,13 +1302,9 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
             <line x1="-2" y1="14" x2="2" y2="14" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" />
 
             {/* Axial Corridors */}
-            {/* North Corridor */}
             <rect x="-2" y="-28" width="4" height="14" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            {/* South Corridor */}
             <rect x="-2" y="14" width="4" height="14" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            {/* West Corridor */}
             <rect x="-28" y="-2" width="14" height="4" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            {/* East Corridor */}
             <rect x="14" y="-2" width="14" height="4" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
 
             {/* Top Horizontal Corridor & Far Corridors */}
@@ -1066,23 +1320,16 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
             <circle cx="24" cy="18" r="6" fill="#713f12" stroke="#eab308" strokeWidth="1" opacity="0.8" />
             <text x="24" y="19" fontSize="2.4" fill="#eab308" textAnchor="middle" fontWeight="bold">CHAMBER</text>
 
-            {/* Surrounding Research Rooms (matching blueprint layout) */}
-            {/* Top-Right Quadrant Rooms */}
+            {/* Surrounding Research Rooms */}
             <rect x="6" y="-26" width="10" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <polygon points="19,-26 25,-26 27,-21 25,-16 19,-16" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="16" y="-14" width="14" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-
-            {/* Bottom-Right Quadrant Rooms */}
             <rect x="16" y="5" width="14" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="4" y="16" width="11" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-
-            {/* Bottom-Left Quadrant Rooms */}
             <polygon points="-33,8 -27,4 -22,8 -24,15 -31,15" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="-24" y="5" width="8" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="-26" y="16" width="9" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="-16" y="16" width="10" height="11" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-
-            {/* Top-Left Quadrant Rooms */}
             <rect x="-31" y="-12" width="12" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="-16" y="-26" width="11" height="10" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
             <rect x="-26" y="-5" width="10" height="7" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
@@ -1122,13 +1369,11 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
                 (localPosRef.current.rotation * 180) / Math.PI
               })`}
             >
-              {/* Vision Cone */}
               <polygon points="0,0 -4,10 4,10" fill="url(#radarCone)" opacity="0.4" />
               <polygon points="0,3 2.5,-3 -2.5,-3" fill="#00f0ff" stroke="#ffffff" strokeWidth="0.6" />
               <circle cx="0" cy="0" r="3.8" fill="none" stroke="#00f0ff" strokeWidth="0.8" opacity="0.7" />
             </g>
 
-            {/* Defs for Vision Cone Gradient */}
             <defs>
               <linearGradient id="radarCone" x1="0%" y1="0%" x2="0%" y2="100%">
                 <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.6" />
@@ -1176,7 +1421,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       </div>
 
       {/* 4. FLOATING PROXIMITY INTERACTION PROMPT */}
-      {nearbyInteractable && (
+      {nearbyInteractable && phase !== "round_table_meeting" && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-16 z-30 flex flex-col items-center gap-1 animate-bounce pointer-events-auto">
           <button
             onClick={() => onInteract && onInteract(nearbyInteractable.type, nearbyInteractable.id)}
@@ -1188,132 +1433,149 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         </div>
       )}
 
-      {/* 5. VIRTUAL JOYSTICK (Bottom-Left - Mobile Movement) */}
-      <div className="absolute bottom-6 left-6 z-30 touch-none select-none">
-        <div
-          ref={joystickBaseRef}
-          onTouchStart={handleJoystickTouchStart}
-          onTouchMove={handleJoystickTouchMove}
-          onTouchEnd={handleJoystickTouchEnd}
-          onMouseDown={handleJoystickTouchStart}
-          onMouseMove={handleJoystickTouchMove}
-          onMouseUp={handleJoystickTouchEnd}
-          className="w-28 h-28 rounded-full bg-slate-900/75 border-2 border-cyan-500/50 backdrop-blur-md flex items-center justify-center relative shadow-2xl cursor-pointer"
-        >
-          {/* Center Joystick Knob */}
+      {/* 5. VIRTUAL JOYSTICK (Bottom-Left - Mobile Movement in free-roam) */}
+      {phase !== "round_table_meeting" && !hideDefaultHud && (
+        <div className="absolute bottom-6 left-6 z-30 touch-none select-none">
           <div
-            style={{
-              transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
-            }}
-            className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-white shadow-lg flex items-center justify-center transition-transform duration-75"
+            ref={joystickBaseRef}
+            onTouchStart={handleJoystickTouchStart}
+            onTouchMove={handleJoystickTouchMove}
+            onTouchEnd={handleJoystickTouchEnd}
+            onMouseDown={handleJoystickTouchStart}
+            onMouseMove={handleJoystickTouchMove}
+            onMouseUp={handleJoystickTouchEnd}
+            className="w-28 h-28 rounded-full bg-slate-900/75 border-2 border-cyan-500/50 backdrop-blur-md flex items-center justify-center relative shadow-2xl cursor-pointer"
           >
-            <Navigation className="w-5 h-5 text-slate-950 transform rotate-45" />
+            {/* Center Joystick Knob */}
+            <div
+              style={{
+                transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
+              }}
+              className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-white shadow-lg flex items-center justify-center transition-transform duration-75"
+            >
+              <Navigation className="w-5 h-5 text-slate-950 transform rotate-45" />
+            </div>
           </div>
+          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest text-center block mt-1">
+            Touch Joystick
+          </span>
         </div>
-        <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest text-center block mt-1">
-          Touch Joystick
-        </span>
-      </div>
+      )}
 
       {/* 6. BOTTOM-RIGHT ACTION HOTBAR */}
-      <div className="absolute bottom-6 right-6 z-30 flex items-end gap-2.5">
-        {/* Throw Item Button */}
-        <div className="relative">
-          {throwWheelOpen && (
-            <div className="absolute bottom-full right-0 mb-2 p-2 rounded-2xl bg-slate-900/95 border border-amber-500/50 backdrop-blur-md grid grid-cols-5 gap-1.5 shadow-2xl z-40">
-              <button
-                onClick={() => handleThrow("tomato")}
-                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
-                title="Throw Tomato"
-              >
-                🍅
-              </button>
-              <button
-                onClick={() => handleThrow("balloon")}
-                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
-                title="Throw Water Balloon"
-              >
-                🎈
-              </button>
-              <button
-                onClick={() => handleThrow("popper")}
-                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
-                title="Party Popper"
-              >
-                🎉
-              </button>
-              <button
-                onClick={() => handleThrow("duck")}
-                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
-                title="Throw Rubber Duck"
-              >
-                🦆
-              </button>
-              <button
-                onClick={() => handleThrow("bomb")}
-                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
-                title="Toy Bomb"
-              >
-                💣
-              </button>
-            </div>
+      {!hideDefaultHud && (
+        <div className="absolute bottom-6 right-6 z-30 flex items-end gap-2.5">
+          {/* Shop / Procurement Button */}
+          {onOpenShop && (
+            <button
+              onClick={onOpenShop}
+              className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 border border-amber-300 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30 active:scale-95 transition"
+              title="Black Market & Crafting Bench"
+            >
+              <ShoppingCart className="w-6 h-6 stroke-[2.5]" />
+            </button>
           )}
-          <button
-            onClick={() => {
-              setThrowWheelOpen((o) => !o);
-              setEmoteWheelOpen(false);
-            }}
-            className="w-12 h-12 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-amber-400 text-amber-300 text-xl flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition"
-            title="Throw Fun Items"
-          >
-            🎯
-          </button>
-        </div>
 
-        {/* Emote Button */}
-        <div className="relative">
-          {emoteWheelOpen && (
-            <div className="absolute bottom-full right-0 mb-2 p-2 rounded-2xl bg-slate-900/95 border border-cyan-500/50 backdrop-blur-md grid grid-cols-5 gap-1.5 shadow-2xl z-40">
-              {["🎯", "👀", "🤫", "🍿", "😂", "🤔", "😤", "🫵", "❤️", "🔥"].map((em) => (
+          {/* Throw Item Button */}
+          <div className="relative">
+            {throwWheelOpen && (
+              <div className="absolute bottom-full right-0 mb-2 p-2 rounded-2xl bg-slate-900/95 border border-amber-500/50 backdrop-blur-md grid grid-cols-5 gap-1.5 shadow-2xl z-40">
                 <button
-                  key={em}
-                  onClick={() => handleSendEmote(em)}
-                  className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg flex items-center justify-center active:scale-90 transition"
+                  onClick={() => handleThrow("tomato")}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
+                  title="Throw Tomato"
                 >
-                  {em}
+                  🍅
                 </button>
-              ))}
-            </div>
-          )}
-          <button
-            onClick={() => {
-              setEmoteWheelOpen((o) => !o);
-              setThrowWheelOpen(false);
-            }}
-            className="w-12 h-12 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-cyan-400 text-cyan-300 text-xl flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition"
-            title="Express Emote"
-          >
-            <Smile className="w-6 h-6" />
-          </button>
-        </div>
+                <button
+                  onClick={() => handleThrow("balloon")}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
+                  title="Throw Water Balloon"
+                >
+                  🎈
+                </button>
+                <button
+                  onClick={() => handleThrow("popper")}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
+                  title="Party Popper"
+                >
+                  🎉
+                </button>
+                <button
+                  onClick={() => handleThrow("duck")}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
+                  title="Throw Rubber Duck"
+                >
+                  🦆
+                </button>
+                <button
+                  onClick={() => handleThrow("bomb")}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-xl flex items-center justify-center active:scale-90 transition"
+                  title="Toy Bomb"
+                >
+                  💣
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setThrowWheelOpen((o) => !o);
+                setEmoteWheelOpen(false);
+              }}
+              className="w-12 h-12 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-amber-400 text-amber-300 text-xl flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition"
+              title="Throw Fun 3D Items"
+            >
+              🎯
+            </button>
+          </div>
 
-        {/* Big Mobile Action / Interact Button */}
-        <button
-          onClick={() => {
-            if (nearbyInteractable && onInteract) {
-              onInteract(nearbyInteractable.type, nearbyInteractable.id);
-            }
-          }}
-          className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-slate-950 font-black shadow-xl active:scale-95 transition ${
-            nearbyInteractable
-              ? "bg-gradient-to-r from-amber-400 to-yellow-400 border-white shadow-amber-500/50 animate-pulse"
-              : "bg-slate-800/80 border-slate-700 text-slate-500 opacity-60"
-          }`}
-          title="Action / Interact"
-        >
-          <Zap className="w-7 h-7 fill-current" />
-        </button>
-      </div>
+          {/* Emote Button */}
+          <div className="relative">
+            {emoteWheelOpen && (
+              <div className="absolute bottom-full right-0 mb-2 p-2 rounded-2xl bg-slate-900/95 border border-cyan-500/50 backdrop-blur-md grid grid-cols-5 gap-1.5 shadow-2xl z-40">
+                {["🎯", "👀", "🤫", "🍿", "😂", "🤔", "😤", "🫵", "❤️", "🔥"].map((em) => (
+                  <button
+                    key={em}
+                    onClick={() => handleSendEmote(em)}
+                    className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-lg flex items-center justify-center active:scale-90 transition"
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setEmoteWheelOpen((o) => !o);
+                setThrowWheelOpen(false);
+              }}
+              className="w-12 h-12 rounded-2xl bg-slate-900/90 border border-slate-700 hover:border-cyan-400 text-cyan-300 text-xl flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition"
+              title="Express Emote"
+            >
+              <Smile className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Big Mobile Action / Interact Button */}
+          {phase !== "round_table_meeting" && (
+            <button
+              onClick={() => {
+                if (nearbyInteractable && onInteract) {
+                  onInteract(nearbyInteractable.type, nearbyInteractable.id);
+                }
+              }}
+              className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-slate-950 font-black shadow-xl active:scale-95 transition ${
+                nearbyInteractable
+                  ? "bg-gradient-to-r from-amber-400 to-yellow-400 border-white shadow-amber-500/50 animate-pulse"
+                  : "bg-slate-800/80 border-slate-700 text-slate-500 opacity-60"
+              }`}
+              title="Action / Interact"
+            >
+              <Zap className="w-7 h-7 fill-current" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 7. SKINS SELECTION DRAWER */}
       {skinDrawerOpen && (
