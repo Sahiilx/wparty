@@ -28,6 +28,8 @@ import {
   X,
   Target,
   ShoppingCart,
+  Eye,
+  Tv,
 } from "lucide-react";
 
 export type CharacterSkin =
@@ -74,6 +76,8 @@ interface Mastermind3DWorldProps {
   phase?: string;
   themePrimary?: string;
   selectedTargetId?: string | null;
+  isFocusingTableScreen?: boolean;
+  onToggleFocusTableScreen?: (focus: boolean) => void;
   onMovePlayer?: (x: number, z: number, rotation: number, isMoving: boolean, skin?: string, sectorId?: string) => void;
   onCollectScrap?: (scrapId: string) => void;
   onSelectSkin?: (skin: string) => void;
@@ -93,6 +97,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   phase = "shop_and_craft",
   themePrimary = "#00f0ff",
   selectedTargetId,
+  isFocusingTableScreen = false,
+  onToggleFocusTableScreen,
   onMovePlayer,
   onCollectScrap,
   onSelectSkin,
@@ -108,14 +114,28 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   const mountRef = useRef<HTMLDivElement>(null);
   const myPlayer = gameState.players[myId];
 
-  // Local Player Movement & Physics State
-  const localPosRef = useRef({ x: 0, z: 0, rotation: 0, isMoving: false });
-  const targetPosRef = useRef<{ x: number; z: number } | null>(null);
+  // Local Player Movement, Physics & Seating State
+  const localPosRef = useRef({
+    x: 0,
+    z: 5.5,
+    y: 0.35,
+    yVel: 0,
+    rotation: 0,
+    isMoving: false,
+    isSeated: true,
+  });
+
   const joystickDirRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isSeated, setIsSeated] = useState(true);
   const [currentSkin, setCurrentSkin] = useState<CharacterSkin>((myPlayer?.skin as CharacterSkin) || "chameleon");
   const [skinDrawerOpen, setSkinDrawerOpen] = useState(false);
-  const [currentSectorName, setCurrentSectorName] = useState("Lockdown Room (Central Core)");
+  const [currentSectorName, setCurrentSectorName] = useState("Council Chamber (Round Table)");
   const [minimapExpanded, setMinimapExpanded] = useState(false);
+
+  // Free Look Camera Spherical Coordinates
+  const camYawRef = useRef(0);
+  const camPitchRef = useRef(0.35); // Radians vertical tilt
+  const camDistRef = useRef(5.5);   // Distance from player / target
 
   // Interaction Proximity Prompt
   const [nearbyInteractable, setNearbyInteractable] = useState<{
@@ -168,7 +188,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
   // Throw 3D Harmless Item
   const handleThrow = (item: "tomato" | "balloon" | "popper" | "duck" | "bomb") => {
     setThrowWheelOpen(false);
-    // Find target player
     const otherPlayers = Object.entries(gameState.players).filter(([id]) => id !== myId);
     let targetPlayer = otherPlayers[0]?.[1];
     let targetPid = otherPlayers[0]?.[0];
@@ -177,7 +196,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       targetPlayer = gameState.players[selectedTargetId];
       targetPid = selectedTargetId;
     } else {
-      // Find closest player
       let closestDist = Infinity;
       otherPlayers.forEach(([id, p]) => {
         const d = Math.hypot((p.x ?? 0) - localPosRef.current.x, (p.z ?? 0) - localPosRef.current.z);
@@ -201,14 +219,40 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     }
   };
 
+  // Stand Up or Sit Down Action
+  const toggleSit = (seatPos?: { x: number; z: number; rotation: number }) => {
+    if (localPosRef.current.isSeated) {
+      localPosRef.current.isSeated = false;
+      setIsSeated(false);
+    } else if (seatPos) {
+      localPosRef.current.x = seatPos.x;
+      localPosRef.current.z = seatPos.z;
+      localPosRef.current.rotation = seatPos.rotation;
+      localPosRef.current.isSeated = true;
+      setIsSeated(true);
+    }
+  };
+
   // =========================================================================
-  // KEYBOARD CONTROLS (WASD / Arrows / E to interact / B for shop)
+  // KEYBOARD CONTROLS (WASD / Arrows / Space / E / B)
   // =========================================================================
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       keysPressedRef.current[e.code] = true;
-      if (e.code === "KeyE" && nearbyInteractable) {
-        if (onInteract) onInteract(nearbyInteractable.type, nearbyInteractable.id);
+      if (e.code === "KeyE") {
+        if (nearbyInteractable) {
+          if (onInteract) onInteract(nearbyInteractable.type, nearbyInteractable.id);
+          if (nearbyInteractable.type === "arcade" && onOpenShop) onOpenShop();
+          if (nearbyInteractable.type === "tablet" && onOpenCrafting) onOpenCrafting();
+        }
+      }
+      if (e.code === "Space") {
+        if (localPosRef.current.isSeated) {
+          localPosRef.current.isSeated = false;
+          setIsSeated(false);
+        } else if (localPosRef.current.y <= 0.36) {
+          localPosRef.current.yVel = 6.2;
+        }
       }
       if (e.code === "KeyB" && onOpenShop) {
         onOpenShop();
@@ -223,7 +267,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [nearbyInteractable, onInteract, onOpenShop]);
+  }, [nearbyInteractable, onInteract, onOpenShop, onOpenCrafting]);
 
   // =========================================================================
   // VIRTUAL JOYSTICK TOUCH HANDLERS (Mobile Friendly)
@@ -288,7 +332,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     scene.fog = new THREE.FogExp2(0x020617, 0.012);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 120);
-    // Position camera inside the room right in front of the table
     camera.position.set(0, 5.6, 8.5);
     camera.lookAt(0, 1.25, 0);
 
@@ -322,7 +365,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     const roomRadius = 14.5;
     const roomHeight = 6.8;
 
-    // Chamber Circular Floor
+    // Circular Floor
     const floorGeo = new THREE.CircleGeometry(roomRadius, 48);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0x040812,
@@ -347,7 +390,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     chamberWall.position.y = roomHeight / 2;
     scene.add(chamberWall);
 
-    // Glowing Neon Vertical Ribs on Chamber Wall
+    // Glowing Neon Vertical Ribs on Wall
     for (let r = 0; r < 12; r++) {
       const ribAngle = (r / 12) * Math.PI * 2;
       const rx = Math.cos(ribAngle) * (roomRadius - 0.1);
@@ -368,14 +411,13 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     ceilingRing.position.y = roomHeight;
     scene.add(ceilingRing);
 
-    // 5. DYNAMIC HIGH-TECH ROUND TABLE (Scales with player count)
+    // 4. DYNAMIC HIGH-TECH ROUND TABLE (Scales with player count)
     const playerList = Object.entries(gameState.players);
     const pCount = Math.max(3, playerList.length || 4);
-    // Table radius adapts dynamically so players are never crowded
     const tableRadius = Math.max(2.9, Math.min(6.2, 1.8 + pCount * 0.45));
     const chairRadius = tableRadius + 1.25;
 
-    // A. Main Table Top (Sleek dark cyber metallic surface)
+    // Main Table Top
     const tableGeo = new THREE.CylinderGeometry(tableRadius, tableRadius, 0.35, 48);
     const tableMat = new THREE.MeshStandardMaterial({
       color: 0x071120,
@@ -391,7 +433,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     const tableEdgeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
     const tableEdge = new THREE.Mesh(tableEdgeGeo, tableEdgeMat);
     tableEdge.rotation.x = Math.PI / 2;
-    tableEdge.position.set(0, 1.18, 0);
+    tableEdge.position.y = 1.18, 0;
     scene.add(tableEdge);
 
     // Center holographic projector & spinning crystal (Panacea Matrix)
@@ -401,14 +443,14 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     crystalMesh.position.set(0, 1.9, 0);
     scene.add(crystalMesh);
 
-    // Center projector column rising from table center
+    // Center projector column
     const projColGeo = new THREE.CylinderGeometry(0.04, 0.32, 2.8, 12, 1, true);
     const projColMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
     const projCol = new THREE.Mesh(projColGeo, projColMat);
     projCol.position.set(0, 2.5, 0);
     scene.add(projCol);
 
-    // B. Chairs, In-Table Embedded Monitors, and Crafting Tablets
+    // 5. Chairs, In-Table Embedded Monitors, and Crafting Tablets
     const chairPositions: Array<{ x: number; z: number; rotation: number; seatIndex: number }> = [];
     const clickableTargets: Array<{ object: THREE.Object3D; type: "arcade" | "tablet" | "player"; id?: string }> = [];
 
@@ -419,7 +461,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       const rotY = -angle + Math.PI / 2; // Face table center
       chairPositions.push({ x: cx, z: cz, rotation: rotY, seatIndex: i });
 
-      // 1. Ergonomic Cyber Chair
+      // Ergonomic Cyber Chair
       const chairGroup = new THREE.Group();
       chairGroup.position.set(cx, 0.35, cz);
       chairGroup.rotation.y = rotY;
@@ -445,7 +487,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
       scene.add(chairGroup);
 
-      // 2. EMBEDDED IN-TABLE MONITOR (Inside the table directly in front of the chair)
+      // Embedded In-Table Monitor (Inside the table directly in front of the chair)
       const screenDist = tableRadius - 0.72;
       const sx = Math.cos(angle) * screenDist;
       const sz = Math.sin(angle) * screenDist;
@@ -454,18 +496,17 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       screenGroup.position.set(sx, 1.18, sz);
       screenGroup.rotation.y = rotY;
 
-      // Inset bezel frame (beveled into table top)
       const bezelGeo = new THREE.BoxGeometry(0.92, 0.04, 0.56);
       const bezelMat = new THREE.MeshStandardMaterial({ color: 0x050c18, roughness: 0.2, metalness: 0.9 });
       const bezel = new THREE.Mesh(bezelGeo, bezelMat);
       screenGroup.add(bezel);
 
-      // Embedded screen surface
+      // In-Table screen surface
       const scrnPlaneGeo = new THREE.PlaneGeometry(0.84, 0.48);
       const scrnPlaneMat = new THREE.MeshBasicMaterial({
         color: 0x00f0ff,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.9,
         side: THREE.DoubleSide,
       });
       const scrnPlane = new THREE.Mesh(scrnPlaneGeo, scrnPlaneMat);
@@ -473,7 +514,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       scrnPlane.position.y = 0.025;
       screenGroup.add(scrnPlane);
 
-      // Glowing bezel border
       const bezelEdgeGeo = new THREE.EdgesGeometry(bezelGeo);
       const bezelEdgeMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
       const bezelEdge = new THREE.LineSegments(bezelEdgeGeo, bezelEdgeMat);
@@ -481,15 +521,15 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
       scene.add(screenGroup);
 
-      // 3. CRAFTING CYBER TABLET (On the table right next to the embedded screen)
+      // Crafting Cyber Tablet
       const tabDist = tableRadius - 0.65;
-      const tabAngle = angle + 0.24; // Offset to the right side of the monitor
+      const tabAngle = angle + 0.24;
       const tx = Math.cos(tabAngle) * tabDist;
       const tz = Math.sin(tabAngle) * tabDist;
 
       const tabletGroup = new THREE.Group();
       tabletGroup.position.set(tx, 1.185, tz);
-      tabletGroup.rotation.y = rotY + 0.15; // Slightly angled
+      tabletGroup.rotation.y = rotY + 0.15;
 
       const tabBodyGeo = new THREE.BoxGeometry(0.38, 0.03, 0.28);
       const tabBodyMat = new THREE.MeshStandardMaterial({ color: 0x181028, roughness: 0.3, metalness: 0.7 });
@@ -503,30 +543,22 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       tabDisplay.position.y = 0.02;
       tabletGroup.add(tabDisplay);
 
-      const tabEdge = new THREE.LineSegments(
-        new THREE.EdgesGeometry(tabBodyGeo),
-        new THREE.LineBasicMaterial({ color: 0xc084fc })
-      );
-      tabletGroup.add(tabEdge);
-
       clickableTargets.push({ object: tabBody, type: "tablet" });
       scene.add(tabletGroup);
     }
 
-    // C. ARCADE MACHINE IN THE SAME ROOM ("ARCADE BLACK MARKET")
+    // 6. ARCADE MACHINE IN THE SAME ROOM ("ARCADE BLACK MARKET")
     const arcadePos = { x: tableRadius + 3.8, y: 0, z: -1.8 };
     const arcadeMachineGroup = new THREE.Group();
     arcadeMachineGroup.position.set(arcadePos.x, 0, arcadePos.z);
-    arcadeMachineGroup.rotation.y = -Math.PI / 2 - 0.35; // Angled facing the table
+    arcadeMachineGroup.rotation.y = -Math.PI / 2 - 0.35;
 
-    // Cabinet Main Base
     const cabGeo = new THREE.BoxGeometry(1.8, 3.2, 1.3);
     const cabMat = new THREE.MeshStandardMaterial({ color: 0x120826, roughness: 0.3, metalness: 0.4 });
     const cab = new THREE.Mesh(cabGeo, cabMat);
     cab.position.y = 1.6;
     arcadeMachineGroup.add(cab);
 
-    // Glowing Marquee Header ("BLACK MARKET ARCADE")
     const marqueeGeo = new THREE.BoxGeometry(1.85, 0.6, 1.35);
     const marqueeMat = new THREE.MeshStandardMaterial({
       color: 0xf59e0b,
@@ -538,7 +570,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     marquee.position.y = 3.35;
     arcadeMachineGroup.add(marquee);
 
-    // CRT Arcade Screen (Curved / Angled inset display)
     const arcScreenGeo = new THREE.PlaneGeometry(1.35, 1.05);
     const arcScreenMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide });
     const arcScreen = new THREE.Mesh(arcScreenGeo, arcScreenMat);
@@ -546,106 +577,25 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     arcScreen.rotation.x = -0.15;
     arcadeMachineGroup.add(arcScreen);
 
-    // Arcade Control Deck (Angled with Dual Joysticks & Neon Buttons)
     const deckGeo = new THREE.BoxGeometry(1.65, 0.35, 0.75);
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.4 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x1f1438 });
     const deck = new THREE.Mesh(deckGeo, deckMat);
-    deck.position.set(0, 1.15, 0.5);
-    deck.rotation.x = -0.4;
+    deck.position.set(0, 1.3, 0.75);
     arcadeMachineGroup.add(deck);
-
-    // 2 Mini Joysticks
-    const stickGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.18, 8);
-    const stickMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.8 });
-    const stickL = new THREE.Mesh(stickGeo, stickMat);
-    stickL.position.set(-0.35, 1.32, 0.52);
-    arcadeMachineGroup.add(stickL);
-    const stickR = new THREE.Mesh(stickGeo, stickMat);
-    stickR.position.set(0.2, 1.32, 0.52);
-    arcadeMachineGroup.add(stickR);
-
-    // Cabinet Outline Neon Edges
-    const cabEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(cabGeo),
-      new THREE.LineBasicMaterial({ color: 0xf59e0b })
-    );
-    cabEdges.position.y = 1.6;
-    arcadeMachineGroup.add(cabEdges);
-
-    // Glow light from Arcade
-    const arcLight = new THREE.PointLight(0xf59e0b, 3.5, 14);
-    arcLight.position.set(0, 2.5, 1.2);
-    arcadeMachineGroup.add(arcLight);
 
     clickableTargets.push({ object: cab, type: "arcade" });
     scene.add(arcadeMachineGroup);
 
-    // D. GIANT HOLOGRAPHIC ROOM SCREEN (On the North Wall)
-    const wallScreenGeo = new THREE.PlaneGeometry(16, 7.5);
-    const wallScreenMat = new THREE.MeshBasicMaterial({ color: 0x021124, side: THREE.DoubleSide });
-    const wallScreen = new THREE.Mesh(wallScreenGeo, wallScreenMat);
-    wallScreen.position.set(0, 6.2, -18);
-    scene.add(wallScreen);
-
-    const wallScreenEdge = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(16, 7.5, 0.1)),
-      new THREE.LineBasicMaterial({ color: 0x00f0ff })
-    );
-    wallScreenEdge.position.set(0, 6.2, -18);
-    scene.add(wallScreenEdge);
-
-    // 7. INTERACTIVE WORLD SCRAP CUBES (3D Floating Resource Loot)
-    const scrapMeshes: Record<string, THREE.Group> = {};
-    const scraps = gameState.worldScraps || [];
-
-    scraps.forEach((s) => {
-      const group = new THREE.Group();
-      group.position.set(s.x, 0.8, s.z);
-
-      // Glowing resource cube
-      const cubeGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
-      const cubeMat = new THREE.MeshStandardMaterial({
-        color: 0x00f0ff,
-        emissive: 0x00f0ff,
-        emissiveIntensity: 0.8,
-        roughness: 0.1,
-      });
-      const cube = new THREE.Mesh(cubeGeo, cubeMat);
-      group.add(cube);
-
-      // Pulsing floor halo ring
-      const haloGeo = new THREE.RingGeometry(0.6, 0.9, 16);
-      const haloMat = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.6,
-      });
-      const halo = new THREE.Mesh(haloGeo, haloMat);
-      halo.rotation.x = Math.PI / 2;
-      halo.position.y = -0.45;
-      group.add(halo);
-
-      scene.add(group);
-      scrapMeshes[s.id] = group;
-    });
-
-    // 8. 3D LASER TARGETING & POINTER SYSTEM
-    const laserLineMat = new THREE.LineBasicMaterial({
-      color: 0xef4444,
-      linewidth: 3,
-      transparent: true,
-      opacity: 0.95,
-    });
-    const laserLineGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, 0),
+    // 7. 3D LASER TARGETING & IMPACT BEAM
+    const laserMat = new THREE.LineBasicMaterial({ color: 0xff1e1e, linewidth: 3 });
+    const laserGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 1.2, 0),
+      new THREE.Vector3(0, 1.2, 0),
     ]);
-    const laserLine = new THREE.Line(laserLineGeo, laserLineMat);
+    const laserLine = new THREE.Line(laserGeo, laserMat);
     laserLine.visible = false;
     scene.add(laserLine);
 
-    // Glowing impact dot at laser pointer tip
     const laserDotGeo = new THREE.SphereGeometry(0.09, 12, 12);
     const laserDotMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e });
     const laserDot = new THREE.Mesh(laserDotGeo, laserDotMat);
@@ -654,20 +604,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
     let freeLaserTarget: { pos: THREE.Vector3; expiresAt: number } | null = null;
 
-    // 9. TAP-TO-MOVE DESTINATION BEACON RING
-    const beaconGeo = new THREE.RingGeometry(0.5, 0.8, 24);
-    const beaconMat = new THREE.MeshBasicMaterial({
-      color: 0x00f0ff,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0,
-    });
-    const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
-    beaconMesh.rotation.x = Math.PI / 2;
-    beaconMesh.position.y = 0.36;
-    scene.add(beaconMesh);
-
-    // 10. 3D CHARACTERS POOL (Fall-Guys / Mecha-Chameleon models with 8 Cute Skins)
+    // 8. 3D CHARACTERS POOL (Fall-Guys / Mecha-Chameleon models with 8 Cute Skins)
     const characterMeshes: Record<
       string,
       {
@@ -678,6 +615,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         badge: THREE.Sprite;
         leftEye: THREE.Mesh;
         rightEye: THREE.Mesh;
+        leftFoot: THREE.Mesh;
+        rightFoot: THREE.Mesh;
         isMe: boolean;
       }
     > = {};
@@ -687,7 +626,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       const colorHex = player.color || "#0ea5e9";
       const skin = (player.skin as CharacterSkin) || (isMe ? currentSkin : "chameleon");
 
-      // A. Cute Rounded Bean Body (Fall Guys / Mecha-Chameleon Style)
+      // Cute Rounded Bean Body (Fall Guys / Mecha-Chameleon Style)
       const bodyGeo = new THREE.CapsuleGeometry(0.48, 0.75, 16, 16);
       const bodyMat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(colorHex),
@@ -698,7 +637,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       body.position.y = 0.9;
       charGroup.add(body);
 
-      // B. Glossy Visor Faceplate
+      // Glossy Visor Faceplate
       const visorGeo = new THREE.SphereGeometry(0.3, 16, 16);
       visorGeo.scale(1.15, 0.85, 0.35);
       const visorMat = new THREE.MeshStandardMaterial({
@@ -720,12 +659,22 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       rightEye.position.set(0.1, 1.18, 0.48);
       charGroup.add(rightEye);
 
-      // C. 8 Distinct Cute Skins Accessories
+      // Cute Little Feet for Fall Guys waddling
+      const footGeo = new THREE.SphereGeometry(0.13, 8, 8);
+      footGeo.scale(1, 0.6, 1.3);
+      const footMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+      const leftFoot = new THREE.Mesh(footGeo, footMat);
+      leftFoot.position.set(-0.2, 0.12, 0.05);
+      charGroup.add(leftFoot);
+      const rightFoot = new THREE.Mesh(footGeo, footMat);
+      rightFoot.position.set(0.2, 0.12, 0.05);
+      charGroup.add(rightFoot);
+
+      // 8 Distinct Cute Skins Accessories
       let tailMesh: THREE.Mesh | undefined;
       let accessoryMesh: THREE.Mesh | undefined;
 
       if (skin === "chameleon") {
-        // Curled mechanical chameleon tail on the back!
         const tailGeo = new THREE.TorusGeometry(0.28, 0.08, 8, 20, Math.PI * 1.6);
         const tailMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex), roughness: 0.3 });
         tailMesh = new THREE.Mesh(tailGeo, tailMat);
@@ -733,7 +682,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         tailMesh.rotation.y = Math.PI / 2;
         charGroup.add(tailMesh);
 
-        // Sensory head crest
         const crestGeo = new THREE.ConeGeometry(0.12, 0.42, 6);
         const crestMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
         const crest = new THREE.Mesh(crestGeo, crestMat);
@@ -741,7 +689,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         crest.rotation.x = -Math.PI / 6;
         charGroup.add(crest);
       } else if (skin === "monarch") {
-        // Floating holographic gold crown
         const crownGeo = new THREE.TorusGeometry(0.35, 0.06, 8, 16);
         const crownMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
         accessoryMesh = new THREE.Mesh(crownGeo, crownMat);
@@ -749,106 +696,80 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         accessoryMesh.rotation.x = Math.PI / 2;
         charGroup.add(accessoryMesh);
       } else if (skin === "mecha") {
-        // Dual shoulder energy pods & antenna
-        const packGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.45, 8);
-        const packMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.4 });
-        const packL = new THREE.Mesh(packGeo, packMat);
-        packL.position.set(-0.38, 1.1, -0.2);
-        charGroup.add(packL);
-        const packR = new THREE.Mesh(packGeo, packMat);
-        packR.position.set(0.38, 1.1, -0.2);
-        charGroup.add(packR);
-
-        const antGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.35, 6);
-        const antMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-        const ant = new THREE.Mesh(antGeo, antMat);
-        ant.position.set(0.2, 1.55, 0);
-        charGroup.add(ant);
+        const podGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.45, 10);
+        const podMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+        const podL = new THREE.Mesh(podGeo, podMat);
+        podL.position.set(-0.52, 1.1, 0);
+        charGroup.add(podL);
+        const podR = new THREE.Mesh(podGeo, podMat);
+        podR.position.set(0.52, 1.1, 0);
+        charGroup.add(podR);
       } else if (skin === "neko") {
-        // Cute cyber cat ears & tail
-        const earGeo = new THREE.ConeGeometry(0.12, 0.32, 4);
-        const earMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex) });
+        const earGeo = new THREE.ConeGeometry(0.14, 0.32, 4);
+        const earMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e });
         const earL = new THREE.Mesh(earGeo, earMat);
-        earL.position.set(-0.25, 1.52, 0);
+        earL.position.set(-0.25, 1.6, 0.05);
         charGroup.add(earL);
         const earR = new THREE.Mesh(earGeo, earMat);
-        earR.position.set(0.25, 1.52, 0);
+        earR.position.set(0.25, 1.6, 0.05);
         charGroup.add(earR);
-      } else if (skin === "dino") {
-        // Cute baby dino tail & neon dorsal spikes
-        const dinoTailGeo = new THREE.ConeGeometry(0.18, 0.5, 6);
-        const dinoTailMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex) });
-        tailMesh = new THREE.Mesh(dinoTailGeo, dinoTailMat);
-        tailMesh.position.set(0, 0.65, -0.5);
-        tailMesh.rotation.x = -Math.PI / 3;
-        charGroup.add(tailMesh);
-
-        for (let s = 0; s < 3; s++) {
-          const spikeGeo = new THREE.ConeGeometry(0.08, 0.18, 4);
-          const spikeMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
-          const spike = new THREE.Mesh(spikeGeo, spikeMat);
-          spike.position.set(0, 1.4 - s * 0.28, -0.42);
-          spike.rotation.x = -Math.PI / 4;
-          charGroup.add(spike);
-        }
-      } else if (skin === "bunny") {
-        // Tall mechanical rabbit ears
-        const bunnyEarGeo = new THREE.CapsuleGeometry(0.08, 0.45, 8, 8);
-        const bunnyEarMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(colorHex) });
-        const earL = new THREE.Mesh(bunnyEarGeo, bunnyEarMat);
-        earL.position.set(-0.2, 1.7, 0);
-        earL.rotation.z = 0.15;
-        charGroup.add(earL);
-        const earR = new THREE.Mesh(bunnyEarGeo, bunnyEarMat);
-        earR.position.set(0.2, 1.7, 0);
-        earR.rotation.z = -0.15;
-        charGroup.add(earR);
-      } else if (skin === "cosmo") {
-        // Retro golden spherical helmet bubble & oxygen jetpack
-        const domeGeo = new THREE.SphereGeometry(0.48, 16, 16);
-        const domeMat = new THREE.MeshStandardMaterial({
-          color: 0xfbbf24,
-          roughness: 0.1,
-          metalness: 0.9,
-          transparent: true,
-          opacity: 0.85,
-        });
-        const dome = new THREE.Mesh(domeGeo, domeMat);
-        dome.position.set(0, 1.25, 0.05);
-        charGroup.add(dome);
-
-        const tankGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.55, 8);
-        const tankMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3 });
-        const tank = new THREE.Mesh(tankGeo, tankMat);
-        tank.position.set(0, 1.0, -0.45);
-        charGroup.add(tank);
       } else if (skin === "shadow") {
-        // Ninja cowl & crimson visor slit
-        const cowlGeo = new THREE.TorusGeometry(0.42, 0.1, 8, 16);
-        const cowlMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.8 });
+        const cowlGeo = new THREE.TorusGeometry(0.38, 0.14, 8, 16);
+        const cowlMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
         const cowl = new THREE.Mesh(cowlGeo, cowlMat);
-        cowl.position.set(0, 1.35, 0);
+        cowl.position.set(0, 1.3, 0);
         cowl.rotation.x = Math.PI / 2;
         charGroup.add(cowl);
+      } else if (skin === "dino") {
+        for (let k = 0; k < 4; k++) {
+          const spikeGeo = new THREE.ConeGeometry(0.08, 0.22, 4);
+          const spikeMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+          const sp = new THREE.Mesh(spikeGeo, spikeMat);
+          sp.position.set(0, 1.3 - k * 0.22, -0.44);
+          sp.rotation.x = -Math.PI / 3;
+          charGroup.add(sp);
+        }
+      } else if (skin === "bunny") {
+        const bEarGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.62, 8);
+        const bEarMat = new THREE.MeshStandardMaterial({ color: 0xec4899 });
+        const bEarL = new THREE.Mesh(bEarGeo, bEarMat);
+        bEarL.position.set(-0.2, 1.75, -0.05);
+        bEarL.rotation.z = 0.15;
+        charGroup.add(bEarL);
+        const bEarR = new THREE.Mesh(bEarGeo, bEarMat);
+        bEarR.position.set(0.2, 1.75, -0.05);
+        bEarR.rotation.z = -0.15;
+        charGroup.add(bEarR);
+      } else if (skin === "cosmo") {
+        const bubbleGeo = new THREE.SphereGeometry(0.55, 16, 16);
+        const bubbleMat = new THREE.MeshStandardMaterial({
+          color: 0xfacc15,
+          transparent: true,
+          opacity: 0.35,
+          metalness: 0.9,
+          roughness: 0.1,
+        });
+        const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
+        bubble.position.set(0, 1.25, 0);
+        charGroup.add(bubble);
       }
 
-      // D. Floating Billboard Name Tag
+      // Live 3D Floating Name Badge
       const canvas = document.createElement("canvas");
       canvas.width = 256;
-      canvas.height = 70;
+      canvas.height = 64;
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = isMe ? "rgba(0, 240, 255, 0.25)" : "rgba(4, 6, 13, 0.85)";
-        ctx.roundRect(4, 4, 248, 62, 10);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.roundRect(4, 4, 248, 56, 16);
         ctx.fill();
-        ctx.strokeStyle = colorHex;
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isMe ? "#00f0ff" : "#475569";
+        ctx.lineWidth = 3;
         ctx.stroke();
-
-        ctx.font = "bold 24px sans-serif";
-        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 22px sans-serif";
+        ctx.fillStyle = isMe ? "#38bdf8" : "#f8fafc";
         ctx.textAlign = "center";
-        ctx.fillText(`${player.avatar} ${player.name}${isMe ? " (YOU)" : ""}`, 128, 42);
+        ctx.fillText(`${player.avatar} ${player.name}${isMe ? " (YOU)" : ""}`, 128, 40);
       }
       const badgeTex = new THREE.CanvasTexture(canvas);
       const spriteMat = new THREE.SpriteMaterial({ map: badgeTex, transparent: true });
@@ -867,16 +788,27 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         badge,
         leftEye,
         rightEye,
+        leftFoot,
+        rightFoot,
         isMe,
       };
     };
 
-    // Seat all players in their cyber chairs around the round table!
+    // My Assigned Seat Index
+    const mySeatIndex = Math.max(0, playerList.findIndex(([pid]) => pid === myId));
+    const myAssignedSeat = chairPositions[mySeatIndex % chairPositions.length] || { x: 0, z: chairRadius, rotation: 0 };
+
+    // Setup initial local player position
+    localPosRef.current.x = myAssignedSeat.x;
+    localPosRef.current.z = myAssignedSeat.z;
+    localPosRef.current.rotation = myAssignedSeat.rotation;
+    camYawRef.current = myAssignedSeat.rotation + Math.PI; // Face the table
+
+    // Spawn character models
     playerList.forEach(([pid, p], idx) => {
       const isMe = pid === myId;
       const model = buildCharacterModel(p, isMe);
       const seat = chairPositions[idx % chairPositions.length];
-
       const px = seat ? seat.x : (p.x ?? 0);
       const pz = seat ? seat.z : (p.z ?? 0);
       const rot = seat ? seat.rotation : (p.rotation ?? 0);
@@ -885,13 +817,9 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       model.group.rotation.y = rot;
       characterMeshes[pid] = model;
       clickableTargets.push({ object: model.group, type: "player", id: pid });
-
-      if (isMe) {
-        localPosRef.current = { x: px, z: pz, rotation: rot, isMoving: false };
-      }
     });
 
-    // 11. ACTIVE 3D PROJECTILES & SPLASH PARTICLES POOLS
+    // 9. ACTIVE 3D PROJECTILES & SPLASH PARTICLES POOLS
     const activeProjectiles: ActiveProjectile3D[] = [];
     const activeSplashes: ActiveSplash3D[] = [];
 
@@ -923,7 +851,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         group.add(head);
         return group;
       }
-      // bomb
       const geo = new THREE.SphereGeometry(0.26, 12, 12);
       const mat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
       return new THREE.Mesh(geo, mat);
@@ -963,75 +890,117 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       });
     };
 
-    // 12. INTERACTIVE RAYCASTING (Clicking players, arcade machine, tablets, or pointing laser)
+    // 10. DRAG-TO-LOOK CAMERA & CLICK-RAYCASTING
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const handleCanvasClick = (e: MouseEvent | TouchEvent) => {
-      const rect = container.getBoundingClientRect();
-      const clientX = "touches" in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
-      const clientY = "touches" in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+    let isPointerDown = false;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let prevPointerX = 0;
+    let prevPointerY = 0;
+    let hasDragged = false;
 
-      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    const onPointerDown = (e: PointerEvent) => {
+      isPointerDown = true;
+      pointerStartX = e.clientX;
+      pointerStartY = e.clientY;
+      prevPointerX = e.clientX;
+      prevPointerY = e.clientY;
+      hasDragged = false;
+    };
 
-      raycaster.setFromCamera(mouse, camera);
-
-      // Check clickable special objects first (Arcade, Tablet, Players)
-      const targetObjects = clickableTargets.map((ct) => ct.object);
-      const targetIntersects = raycaster.intersectObjects(targetObjects, true);
-
-      if (targetIntersects.length > 0) {
-        const hit = targetIntersects[0];
-        let found = clickableTargets.find((ct) => ct.object === hit.object);
-        if (!found) {
-          found = clickableTargets.find((ct) => {
-            let p: THREE.Object3D | null = hit.object;
-            while (p) {
-              if (p === ct.object) return true;
-              p = p.parent;
-            }
-            return false;
-          });
-        }
-
-        if (found) {
-          if (found.type === "arcade") {
-            if (onOpenShop) onOpenShop();
-            if (onInteract) onInteract("arcade");
-            return;
-          }
-          if (found.type === "tablet") {
-            if (onOpenCrafting) onOpenCrafting();
-            if (onInteract) onInteract("tablet");
-            return;
-          }
-          if (found.type === "player" && found.id && found.id !== myId) {
-            if (onSelectTargetPlayer) onSelectTargetPlayer(found.id);
-            freeLaserTarget = { pos: hit.point.clone(), expiresAt: performance.now() + 3000 };
-            return;
-          }
-        }
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isPointerDown) return;
+      const dx = e.clientX - pointerStartX;
+      const dy = e.clientY - pointerStartY;
+      if (Math.hypot(dx, dy) > 4) {
+        hasDragged = true;
       }
-
-      // Check table top or floor to aim laser pointer for fun
-      const floorIntersects = raycaster.intersectObjects([tableMesh, foundationMesh], false);
-      if (floorIntersects.length > 0) {
-        const pt = floorIntersects[0].point;
-        freeLaserTarget = { pos: pt.clone(), expiresAt: performance.now() + 3000 };
+      if (hasDragged) {
+        const deltaX = e.clientX - prevPointerX;
+        const deltaY = e.clientY - prevPointerY;
+        camYawRef.current -= deltaX * 0.0055;
+        camPitchRef.current = Math.max(-0.25, Math.min(1.22, camPitchRef.current - deltaY * 0.0055));
+        prevPointerX = e.clientX;
+        prevPointerY = e.clientY;
       }
     };
 
-    container.addEventListener("click", handleCanvasClick);
+    const onWheel = (e: WheelEvent) => {
+      camDistRef.current = Math.max(2.0, Math.min(11.5, camDistRef.current + e.deltaY * 0.005));
+    };
 
-    // 13. MAIN ANIMATION & GAME LOOP
+    const onPointerUp = (e: PointerEvent) => {
+      if (!isPointerDown) return;
+      isPointerDown = false;
+
+      // If user merely tapped without dragging: raycast!
+      if (!hasDragged) {
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const targetObjects = clickableTargets.map((ct) => ct.object);
+        const targetIntersects = raycaster.intersectObjects(targetObjects, true);
+
+        if (targetIntersects.length > 0) {
+          const hit = targetIntersects[0];
+          let found = clickableTargets.find((ct) => ct.object === hit.object);
+          if (!found) {
+            found = clickableTargets.find((ct) => {
+              let p: THREE.Object3D | null = hit.object;
+              while (p) {
+                if (p === ct.object) return true;
+                p = p.parent;
+              }
+              return false;
+            });
+          }
+
+          if (found) {
+            if (found.type === "arcade") {
+              if (onOpenShop) onOpenShop();
+              if (onInteract) onInteract("arcade");
+              return;
+            }
+            if (found.type === "tablet") {
+              if (onOpenCrafting) onOpenCrafting();
+              if (onInteract) onInteract("tablet");
+              return;
+            }
+            if (found.type === "player" && found.id && found.id !== myId) {
+              if (onSelectTargetPlayer) onSelectTargetPlayer(found.id);
+              freeLaserTarget = { pos: hit.point.clone(), expiresAt: performance.now() + 3000 };
+              return;
+            }
+          }
+        }
+
+        // Aim laser pointer at table or floor
+        const floorIntersects = raycaster.intersectObjects([tableMesh, foundationMesh], false);
+        if (floorIntersects.length > 0) {
+          const pt = floorIntersects[0].point;
+          freeLaserTarget = { pos: pt.clone(), expiresAt: performance.now() + 3000 };
+        }
+      }
+    };
+
+    container.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    container.addEventListener("wheel", onWheel, { passive: true });
+
+    // 11. MAIN ANIMATION & GAME LOOP
     let animId: number;
     let clock = new THREE.Clock();
+    let walkClock = 0;
     let lastNetworkSync = 0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const dt = clock.getDelta();
+      const dt = Math.min(clock.getDelta(), 0.1);
       const elapsedTime = clock.getElapsedTime();
       const now = performance.now();
 
@@ -1040,23 +1009,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       crystalMesh.rotation.x = Math.sin(elapsedTime * 1.5) * 0.2;
       marquee.material.emissiveIntensity = 0.5 + Math.sin(elapsedTime * 3) * 0.3;
 
-      // Animate floating scrap cubes
-      scraps.forEach((s) => {
-        const m = scrapMeshes[s.id];
-        if (m) {
-          m.position.y = 0.8 + Math.sin(elapsedTime * 3 + s.x) * 0.15;
-          m.rotation.y += 1.5 * dt;
-          m.rotation.x += 0.8 * dt;
-        }
-      });
-
-      // Animate tap beacon ring
-      if (beaconMesh.material.opacity > 0) {
-        beaconMesh.material.opacity -= 0.6 * dt;
-        beaconMesh.scale.addScalar(0.8 * dt);
-      }
-
-      // Check Throw Queue and Spawn 3D Projectiles
+      // Update 3D Projectiles
       while (throwQueueRef.current.length > 0) {
         const itemEvent = throwQueueRef.current.shift()!;
         const mesh = createProjectileMesh(itemEvent.item);
@@ -1074,17 +1027,13 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         });
       }
 
-      // Update 3D Projectiles
       for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i];
         const progress = Math.min(1.0, (now - p.startTime) / p.duration);
-
-        // Parabolic flight arc
         p.mesh.position.x = THREE.MathUtils.lerp(p.start.x, p.target.x, progress);
         p.mesh.position.z = THREE.MathUtils.lerp(p.start.z, p.target.z, progress);
         const arcY = Math.sin(progress * Math.PI) * 4.2;
         p.mesh.position.y = THREE.MathUtils.lerp(p.start.y, p.target.y, progress) + arcY;
-
         p.mesh.rotation.x += 8.0 * dt;
         p.mesh.rotation.y += 5.0 * dt;
 
@@ -1099,10 +1048,9 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       for (let sIdx = activeSplashes.length - 1; sIdx >= 0; sIdx--) {
         const splash = activeSplashes[sIdx];
         const spProg = (now - splash.startTime) / splash.duration;
-
         splash.particles.forEach((part) => {
           part.mesh.position.addScaledVector(part.velocity, dt);
-          part.velocity.y -= 9.8 * dt; // gravity
+          part.velocity.y -= 9.8 * dt;
         });
 
         if (spProg >= 1.0) {
@@ -1111,7 +1059,7 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         }
       }
 
-      // Update 3D Laser Pointer & Targeting Line
+      // 3D Laser Line & Impact Dot
       let laserActive = false;
       let targetPoint: THREE.Vector3 | null = null;
 
@@ -1138,62 +1086,125 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         laserDot.visible = false;
       }
 
-      // --- CAMERA POSITIONING BASED ON GAME PHASE ---
-      if (phase === "round_table_meeting") {
-        // High-angle cinematic view of the round table, all seated players, lasers & right-side abilities HUD
-        const targetCamX = Math.sin(elapsedTime * 0.08) * 3.0;
-        const targetCamZ = tableRadius + 5.2;
-        camera.position.x += (targetCamX - camera.position.x) * 0.045;
-        camera.position.y += (6.8 - camera.position.y) * 0.045;
-        camera.position.z += (targetCamZ - camera.position.z) * 0.045;
-        camera.lookAt(0, 1.25, 0);
-      } else if (phase === "minigame") {
-        // Seated viewpoint: camera frames the player's personal in-table embedded monitor with the round table in front!
-        const mySeat = characterMeshes[myId]?.group.position;
-        if (mySeat) {
-          const camX = mySeat.x * 1.35;
-          const camZ = mySeat.z * 1.35;
-          camera.position.x += (camX - camera.position.x) * 0.06;
-          camera.position.y += (2.6 - camera.position.y) * 0.06;
-          camera.position.z += (camZ - camera.position.z) * 0.06;
-          camera.lookAt(mySeat.x * 0.55, 1.18, mySeat.z * 0.55);
-        } else {
-          camera.position.set(0, 4.5, 6.5);
-          camera.lookAt(0, 1.2, 0);
+      // =====================================================================
+      // FALL GUYS LOCAL PLAYER CONTROLLER & PHYSICS
+      // =====================================================================
+      let inputX = 0;
+      let inputZ = 0;
+      if (keysPressedRef.current["KeyW"] || keysPressedRef.current["ArrowUp"]) inputZ -= 1;
+      if (keysPressedRef.current["KeyS"] || keysPressedRef.current["ArrowDown"]) inputZ += 1;
+      if (keysPressedRef.current["KeyA"] || keysPressedRef.current["ArrowLeft"]) inputX -= 1;
+      if (keysPressedRef.current["KeyD"] || keysPressedRef.current["ArrowRight"]) inputX += 1;
+
+      if (joystickDirRef.current.x !== 0 || joystickDirRef.current.y !== 0) {
+        inputX = joystickDirRef.current.x;
+        inputZ = joystickDirRef.current.y;
+      }
+
+      const hasMoveInput = inputX !== 0 || inputZ !== 0;
+
+      if (hasMoveInput) {
+        if (localPosRef.current.isSeated) {
+          localPosRef.current.isSeated = false;
+          setIsSeated(false);
         }
-      } else if (phase === "shop_and_craft" || phase === "shop") {
-        // Seated view of the room framing both the round table, Arcade machine & tablets
-        const camX = Math.sin(elapsedTime * 0.05) * 3.5;
-        const camZ = tableRadius + 5.8;
-        camera.position.x += (camX - camera.position.x) * 0.04;
-        camera.position.y += (7.0 - camera.position.y) * 0.04;
-        camera.position.z += (camZ - camera.position.z) * 0.04;
-        camera.lookAt(0, 1.2, 0);
-      } else if (phase === "role_reveal") {
-        // Framing center of table crystal
-        camera.position.x += (0 - camera.position.x) * 0.05;
-        camera.position.y += (7.5 - camera.position.y) * 0.05;
-        camera.position.z += (tableRadius + 4.8 - camera.position.z) * 0.05;
-        camera.lookAt(0, 1.4, 0);
+
+        // Camera-Relative Movement Direction
+        const fwdX = Math.sin(camYawRef.current);
+        const fwdZ = -Math.cos(camYawRef.current);
+        const rightX = -Math.cos(camYawRef.current);
+        const rightZ = -Math.sin(camYawRef.current);
+
+        const moveDirX = inputX * rightX - inputZ * fwdX;
+        const moveDirZ = inputX * rightZ - inputZ * fwdZ;
+        const moveMag = Math.hypot(moveDirX, moveDirZ);
+
+        if (moveMag > 0.001) {
+          const speed = 5.6; // m/s
+          const ndx = (moveDirX / moveMag) * speed * dt;
+          const ndz = (moveDirZ / moveMag) * speed * dt;
+          let nextX = localPosRef.current.x + ndx;
+          let nextZ = localPosRef.current.z + ndz;
+
+          // Chamber Perimeter Wall Collision
+          const distCenter = Math.hypot(nextX, nextZ);
+          if (distCenter > 13.8) {
+            const sc = 13.8 / distCenter;
+            nextX *= sc;
+            nextZ *= sc;
+          }
+
+          // Center Round Table Collision
+          if (distCenter < tableRadius + 0.35) {
+            const sc = (tableRadius + 0.35) / distCenter;
+            nextX *= sc;
+            nextZ *= sc;
+          }
+
+          localPosRef.current.x = nextX;
+          localPosRef.current.z = nextZ;
+          localPosRef.current.rotation = Math.atan2(moveDirX, moveDirZ);
+          localPosRef.current.isMoving = true;
+        }
       } else {
-        // Default overview
-        camera.position.x += (Math.sin(elapsedTime * 0.05) * 2 - camera.position.x) * 0.05;
-        camera.position.y += (7.2 - camera.position.y) * 0.05;
-        camera.position.z += (tableRadius + 5.5 - camera.position.z) * 0.05;
-        camera.lookAt(0, 1.2, 0);
+        localPosRef.current.isMoving = false;
       }
 
-      // Local player seating
-      const mySeat = characterMeshes[myId];
-      if (mySeat) {
-        mySeat.body.rotation.z = 0;
-        mySeat.group.position.y = 0.35 + Math.sin(elapsedTime * 2.2) * 0.02;
+      // Vertical Gravity & Jump Physics
+      if (localPosRef.current.yVel !== 0 || localPosRef.current.y > 0.35) {
+        localPosRef.current.y += localPosRef.current.yVel * dt;
+        localPosRef.current.yVel -= 18.0 * dt;
+        if (localPosRef.current.y <= 0.35) {
+          localPosRef.current.y = 0.35;
+          localPosRef.current.yVel = 0;
+        }
+      }
+
+      // Local player mesh update
+      const myModel = characterMeshes[myId];
+      if (myModel) {
+        if (localPosRef.current.isSeated) {
+          // Seated in assigned cyber chair
+          myModel.group.position.set(myAssignedSeat.x, 0.35, myAssignedSeat.z);
+          myModel.group.rotation.y = myAssignedSeat.rotation;
+          myModel.body.rotation.z = 0;
+          myModel.body.position.y = 0.9;
+          myModel.leftFoot.position.y = 0.12;
+          myModel.rightFoot.position.y = 0.12;
+        } else {
+          // Walking & Jumping Free Roam
+          myModel.group.position.set(localPosRef.current.x, localPosRef.current.y, localPosRef.current.z);
+          myModel.group.rotation.y = localPosRef.current.rotation;
+
+          if (localPosRef.current.isMoving) {
+            walkClock += dt;
+            // Fall Guys Iconic Waddle Wobble!
+            myModel.body.rotation.z = Math.sin(walkClock * 14) * 0.18;
+            myModel.body.position.y = 0.9 + Math.abs(Math.sin(walkClock * 14)) * 0.14;
+            myModel.leftFoot.position.y = 0.12 + Math.max(0, Math.sin(walkClock * 14)) * 0.22;
+            myModel.rightFoot.position.y = 0.12 + Math.max(0, -Math.sin(walkClock * 14)) * 0.22;
+            if (myModel.tail) myModel.tail.rotation.z = Math.sin(walkClock * 14) * 0.3;
+          } else {
+            myModel.body.rotation.z = 0;
+            myModel.body.position.y = 0.9 + Math.sin(elapsedTime * 2.5) * 0.02;
+            myModel.leftFoot.position.y = 0.12;
+            myModel.rightFoot.position.y = 0.12;
+          }
+
+          // Jump squash & stretch
+          if (localPosRef.current.y > 0.36) {
+            myModel.body.scale.set(0.88, 1.18, 0.88);
+          } else {
+            myModel.body.scale.set(1.0, 1.0, 1.0);
+          }
+        }
+
         const blink = Math.sin(elapsedTime * 1.8) > 0.96 ? 0.1 : 1.0;
-        mySeat.leftEye.scale.y = blink;
-        mySeat.rightEye.scale.y = blink;
+        myModel.leftEye.scale.y = blink;
+        myModel.rightEye.scale.y = blink;
       }
 
-      // Update Remote Players from gameState (all seated around table)
+      // Update Remote Players from gameState
       playerList.forEach(([pid, p], idx) => {
         if (pid === myId) return;
         let model = characterMeshes[pid];
@@ -1203,32 +1214,76 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           clickableTargets.push({ object: model.group, type: "player", id: pid });
         }
 
-        const seat = chairPositions[idx % chairPositions.length];
-        if (seat) {
-          model.group.position.set(seat.x, 0.35, seat.z);
-          model.group.rotation.y = seat.rotation;
+        if (p.x !== undefined && p.z !== undefined && (p.x !== 0 || p.z !== 0)) {
+          model.group.position.x += (p.x - model.group.position.x) * 0.2;
+          model.group.position.z += (p.z - model.group.position.z) * 0.2;
+          if (p.rotation !== undefined) model.group.rotation.y = p.rotation;
+        } else {
+          const seat = chairPositions[idx % chairPositions.length];
+          if (seat) {
+            model.group.position.set(seat.x, 0.35, seat.z);
+            model.group.rotation.y = seat.rotation;
+          }
         }
 
-        // Cute avatar breathing & head turn
         model.body.rotation.z = Math.sin(elapsedTime * 2.0 + idx) * 0.04;
         model.group.position.y = 0.35 + Math.sin(elapsedTime * 2.5 + idx) * 0.02;
       });
 
-      // Check Proximity to Points of Interest in the Room
-      const canMoveFreely = false;
-      const distToArcade = Math.hypot(localPosRef.current.x - (tableRadius + 3.8), localPosRef.current.z - (-1.8));
-      const distToCenterTable = Math.hypot(localPosRef.current.x, localPosRef.current.z);
-
-      if (distToArcade < 5.0) {
-        setNearbyInteractable({ type: "arcade", label: "🕹️ Arcade Black Market" });
-      } else if (distToCenterTable < tableRadius + 2.0) {
-        setNearbyInteractable({ type: "tablet", label: "📱 In-Table Crafting Tablet" });
+      // =====================================================================
+      // DYNAMIC 3RD-PERSON ORBIT & IN-TABLE SCREEN CAMERA
+      // =====================================================================
+      if (isFocusingTableScreen) {
+        // Tilted down directly at the player's in-table desk monitor
+        const camX = myAssignedSeat.x * 1.32;
+        const camY = 2.38;
+        const camZ = myAssignedSeat.z * 1.32;
+        camera.position.x += (camX - camera.position.x) * 0.12;
+        camera.position.y += (camY - camera.position.y) * 0.12;
+        camera.position.z += (camZ - camera.position.z) * 0.12;
+        camera.lookAt(myAssignedSeat.x * 0.62, 1.18, myAssignedSeat.z * 0.62);
       } else {
-        setNearbyInteractable({ type: "table", label: "Council Round Table" });
+        // Free Look Orbit Camera behind Player
+        const pTargetX = localPosRef.current.isSeated ? myAssignedSeat.x : localPosRef.current.x;
+        const pTargetZ = localPosRef.current.isSeated ? myAssignedSeat.z : localPosRef.current.z;
+        const pTargetY = localPosRef.current.isSeated ? 1.25 : localPosRef.current.y + 0.9;
+
+        const targetLook = new THREE.Vector3(pTargetX, pTargetY, pTargetZ);
+        const desiredCamX = targetLook.x + Math.sin(camYawRef.current) * Math.cos(camPitchRef.current) * camDistRef.current;
+        let desiredCamY = targetLook.y + Math.sin(camPitchRef.current) * camDistRef.current;
+        const desiredCamZ = targetLook.z + Math.cos(camYawRef.current) * Math.cos(camPitchRef.current) * camDistRef.current;
+
+        // Clamp camera inside the chamber room
+        desiredCamY = Math.max(0.65, Math.min(roomHeight - 0.4, desiredCamY));
+        let distH = Math.hypot(desiredCamX, desiredCamZ);
+        let finalCamX = desiredCamX;
+        let finalCamZ = desiredCamZ;
+        if (distH > roomRadius - 0.7) {
+          const sc = (roomRadius - 0.7) / distH;
+          finalCamX *= sc;
+          finalCamZ *= sc;
+        }
+
+        camera.position.x += (finalCamX - camera.position.x) * 0.18;
+        camera.position.y += (desiredCamY - camera.position.y) * 0.18;
+        camera.position.z += (finalCamZ - camera.position.z) * 0.18;
+        camera.lookAt(targetLook);
       }
 
-      const foundSecName = "Council Chamber (Round Table Core)";
-      setCurrentSectorName(foundSecName);
+      // Check Proximity to Room Points of Interest
+      const distToArcade = Math.hypot(localPosRef.current.x - (tableRadius + 3.8), localPosRef.current.z - (-1.8));
+      const distToSeat = Math.hypot(localPosRef.current.x - myAssignedSeat.x, localPosRef.current.z - myAssignedSeat.z);
+      const distToCenter = Math.hypot(localPosRef.current.x, localPosRef.current.z);
+
+      if (distToArcade < 3.2) {
+        setNearbyInteractable({ type: "arcade", label: "🕹️ Arcade Black Market" });
+      } else if (distToSeat < 1.6 && !localPosRef.current.isSeated) {
+        setNearbyInteractable({ type: "table", label: "🪑 Sit at Your Desk" });
+      } else if (distToCenter < tableRadius + 1.8) {
+        setNearbyInteractable({ type: "tablet", label: "📱 In-Table Crafting Tablet" });
+      } else {
+        setNearbyInteractable(null);
+      }
 
       // Network Sync (Throttle to 50ms)
       const curNow = performance.now();
@@ -1237,9 +1292,9 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           Math.round(localPosRef.current.x * 100) / 100,
           Math.round(localPosRef.current.z * 100) / 100,
           Math.round(localPosRef.current.rotation * 100) / 100,
-          false,
+          localPosRef.current.isMoving,
           currentSkin,
-          foundSecName
+          "Council Chamber"
         );
         lastNetworkSync = curNow;
       }
@@ -1262,63 +1317,87 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      container.removeEventListener("click", handleCanvasClick);
+      container.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      container.removeEventListener("wheel", onWheel);
       cancelAnimationFrame(animId);
       renderer.dispose();
     };
-  }, [gameState.worldScraps, myId, currentSkin, phase, selectedTargetId, onMovePlayer, onCollectScrap]);
+  }, [gameState.worldScraps, myId, currentSkin, phase, selectedTargetId, isFocusingTableScreen, onMovePlayer, onCollectScrap]);
 
   return (
     <div className="relative w-full h-full select-none overflow-hidden bg-slate-950 text-white font-sans">
       {/* 1. 3D WebGL Canvas */}
-      <div ref={mountRef} className="w-full h-full cursor-pointer touch-none" />
+      <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing touch-none" />
 
-      {/* 2. COUNCIL CHAMBER RADAR (Top-Right) */}
+      {/* 2. ON-SCREEN CAMERA & CONTROLS HELPER BAR (Top Center) */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 pointer-events-auto">
+        <button
+          onClick={() => {
+            if (onToggleFocusTableScreen) {
+              onToggleFocusTableScreen(!isFocusingTableScreen);
+            }
+          }}
+          className="px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-cyan-500/50 text-xs font-mono font-bold text-cyan-300 hover:text-white flex items-center gap-1.5 shadow-xl backdrop-blur-md active:scale-95 transition"
+        >
+          {isFocusingTableScreen ? <Eye className="w-3.5 h-3.5 text-cyan-400" /> : <Tv className="w-3.5 h-3.5 text-cyan-400" />}
+          <span>{isFocusingTableScreen ? "Look Around Room" : "Focus Table Screen"}</span>
+        </button>
+
+        <button
+          onClick={() => toggleSit()}
+          className="px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-slate-700 text-xs font-mono font-bold text-slate-300 hover:text-white flex items-center gap-1.5 shadow-xl backdrop-blur-md active:scale-95 transition"
+        >
+          <span>{isSeated ? "🚶 Stand Up" : "🪑 Sit Down"}</span>
+        </button>
+
+        <div className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 backdrop-blur-md">
+          <span>🖱️ Drag to look around</span>
+          <span>•</span>
+          <span>WASD to walk</span>
+          <span>•</span>
+          <span>Space to jump</span>
+        </div>
+      </div>
+
+      {/* 3. COUNCIL CHAMBER RADAR (Top-Right) */}
       <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-1 pointer-events-none">
         <div
           className={`${
             minimapExpanded ? "w-60 h-60" : "w-32 h-32 md:w-36 md:h-36"
           } rounded-2xl bg-slate-950/90 border-2 border-cyan-500/50 backdrop-blur-md shadow-2xl p-2 relative overflow-hidden pointer-events-auto transition-all duration-300`}
         >
-          {/* Chamber SVG Radar */}
           <svg viewBox="-20 -20 40 40" className="w-full h-full">
-            {/* Outer Chamber Perimeter */}
             <circle cx="0" cy="0" r="17" fill="#040812" stroke="#1e293b" strokeWidth="0.8" />
             <circle cx="0" cy="0" r="14.5" fill="none" stroke="#0284c7" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-
-            {/* Central Round Table */}
             <circle cx="0" cy="0" r="5" fill="#0b172a" stroke="#00f0ff" strokeWidth="0.9" />
             <circle cx="0" cy="0" r="1.2" fill="#00f0ff" opacity="0.6" />
-
-            {/* Arcade Machine Location Blip */}
             <rect x="9.5" y="-3.5" width="2.2" height="3.5" rx="0.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="0.4" />
 
-            {/* All Seated Operative Blips */}
             {Object.entries(gameState.players).map(([pid, p], idx) => {
               const isMe = pid === myId;
-              const angle = (idx / Math.max(3, Object.keys(gameState.players).length)) * Math.PI * 2;
-              const bx = Math.cos(angle) * 7.2;
-              const bz = Math.sin(angle) * 7.2;
+              const px = isMe ? localPosRef.current.x : (p.x ?? 0);
+              const pz = isMe ? localPosRef.current.z : (p.z ?? 0);
 
               return (
                 <g key={pid}>
                   <circle
-                    cx={bx}
-                    cy={bz}
+                    cx={px}
+                    cy={pz}
                     r={isMe ? 2.0 : 1.4}
                     fill={p.color || "#0ea5e9"}
                     stroke={isMe ? "#00f0ff" : "#ffffff"}
                     strokeWidth={isMe ? 0.8 : 0.4}
                   />
                   {isMe && (
-                    <circle cx={bx} cy={bz} r="3.2" fill="none" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" className="animate-ping" />
+                    <circle cx={px} cy={pz} r="3.2" fill="none" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" className="animate-ping" />
                   )}
                 </g>
               );
             })}
           </svg>
 
-          {/* Radar Expand/Collapse Button */}
           <button
             onClick={() => setMinimapExpanded((o) => !o)}
             className="absolute bottom-1 right-1 p-1 rounded-lg bg-slate-900/90 text-cyan-400 hover:text-white border border-cyan-500/40"
@@ -1327,14 +1406,13 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           </button>
         </div>
 
-        {/* Room Name Badge */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 backdrop-blur-md">
           <MapPin className="w-3 h-3 text-amber-400" />
           <span className="font-bold truncate max-w-[140px]">Council Chamber</span>
         </div>
       </div>
 
-      {/* 3. TOP-LEFT HUD: Operative Profile & Skins Button */}
+      {/* 4. TOP-LEFT HUD: Operative Profile & Skins Button */}
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 backdrop-blur-md">
           <span className="text-xl">{myPlayer?.avatar}</span>
@@ -1346,7 +1424,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           </div>
         </div>
 
-        {/* Skins Selector Button */}
         <button
           onClick={() => setSkinDrawerOpen((o) => !o)}
           className="px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-cyan-500/40 text-xs font-black text-cyan-300 hover:text-white flex items-center gap-1.5 shadow-lg backdrop-blur-md active:scale-95 transition"
@@ -1356,11 +1433,19 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         </button>
       </div>
 
-      {/* 4. FLOATING PROXIMITY INTERACTION PROMPT */}
+      {/* 5. FLOATING PROXIMITY INTERACTION PROMPT */}
       {nearbyInteractable && phase !== "round_table_meeting" && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-16 z-30 flex flex-col items-center gap-1 animate-bounce pointer-events-auto">
           <button
-            onClick={() => onInteract && onInteract(nearbyInteractable.type, nearbyInteractable.id)}
+            onClick={() => {
+              if (nearbyInteractable.type === "table") {
+                toggleSit();
+              } else if (onInteract) {
+                onInteract(nearbyInteractable.type, nearbyInteractable.id);
+              }
+              if (nearbyInteractable.type === "arcade" && onOpenShop) onOpenShop();
+              if (nearbyInteractable.type === "tablet" && onOpenCrafting) onOpenCrafting();
+            }}
             className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-2xl flex items-center gap-2 border border-white/50"
           >
             <Zap className="w-4 h-4 fill-slate-950" />
@@ -1369,8 +1454,8 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         </div>
       )}
 
-      {/* 5. VIRTUAL JOYSTICK (Bottom-Left - Mobile Movement in free-roam) */}
-      {phase !== "round_table_meeting" && !hideDefaultHud && (
+      {/* 6. VIRTUAL JOYSTICK (Bottom-Left - Mobile Movement) */}
+      {!hideDefaultHud && (
         <div className="absolute bottom-6 left-6 z-30 touch-none select-none">
           <div
             ref={joystickBaseRef}
@@ -1382,7 +1467,6 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
             onMouseUp={handleJoystickTouchEnd}
             className="w-28 h-28 rounded-full bg-slate-900/75 border-2 border-cyan-500/50 backdrop-blur-md flex items-center justify-center relative shadow-2xl cursor-pointer"
           >
-            {/* Center Joystick Knob */}
             <div
               style={{
                 transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
@@ -1398,15 +1482,14 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
         </div>
       )}
 
-      {/* 6. BOTTOM-RIGHT ACTION HOTBAR */}
+      {/* 7. BOTTOM-RIGHT ACTION HOTBAR */}
       {!hideDefaultHud && (
         <div className="absolute bottom-6 right-6 z-30 flex items-end gap-2.5">
-          {/* Shop / Procurement Button */}
           {onOpenShop && (
             <button
               onClick={onOpenShop}
               className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 border border-amber-300 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30 active:scale-95 transition"
-              title="Black Market & Crafting Bench"
+              title="Arcade Black Market"
             >
               <ShoppingCart className="w-6 h-6 stroke-[2.5]" />
             </button>
@@ -1491,29 +1574,10 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
               <Smile className="w-6 h-6" />
             </button>
           </div>
-
-          {/* Big Mobile Action / Interact Button */}
-          {phase !== "round_table_meeting" && (
-            <button
-              onClick={() => {
-                if (nearbyInteractable && onInteract) {
-                  onInteract(nearbyInteractable.type, nearbyInteractable.id);
-                }
-              }}
-              className={`w-14 h-14 rounded-2xl border flex items-center justify-center text-slate-950 font-black shadow-xl active:scale-95 transition ${
-                nearbyInteractable
-                  ? "bg-gradient-to-r from-amber-400 to-yellow-400 border-white shadow-amber-500/50 animate-pulse"
-                  : "bg-slate-800/80 border-slate-700 text-slate-500 opacity-60"
-              }`}
-              title="Action / Interact"
-            >
-              <Zap className="w-7 h-7 fill-current" />
-            </button>
-          )}
         </div>
       )}
 
-      {/* 7. SKINS SELECTION DRAWER */}
+      {/* 8. SKINS SELECTION DRAWER */}
       {skinDrawerOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-slate-900 border border-cyan-500/50 rounded-3xl p-5 shadow-2xl flex flex-col gap-4">
