@@ -287,9 +287,10 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     scene.background = new THREE.Color(0x020617);
     scene.fog = new THREE.FogExp2(0x020617, 0.012);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 200);
-    camera.position.set(0, 19, 17);
-    camera.lookAt(0, 0, 0);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 120);
+    // Position camera inside the room right in front of the table
+    camera.position.set(0, 5.6, 8.5);
+    camera.lookAt(0, 1.25, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(width, height);
@@ -301,132 +302,71 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     container.appendChild(renderer.domElement);
 
     // 2. Dynamic Lighting System
-    const ambientLight = new THREE.AmbientLight(0x1e293b, 2.6);
+    const ambientLight = new THREE.AmbientLight(0x1e293b, 2.8);
     scene.add(ambientLight);
 
-    const mainCenterLight = new THREE.PointLight(0x00f0ff, 5.0, 150);
-    mainCenterLight.position.set(0, 14, 0);
+    const mainCenterLight = new THREE.PointLight(0x00f0ff, 4.5, 60);
+    mainCenterLight.position.set(0, 6.0, 0);
     mainCenterLight.castShadow = true;
     scene.add(mainCenterLight);
 
-    const northLight = new THREE.PointLight(0x38bdf8, 3.2, 90);
-    northLight.position.set(0, 9, -20);
+    const northLight = new THREE.PointLight(0x38bdf8, 2.5, 40);
+    northLight.position.set(0, 5.0, -10);
     scene.add(northLight);
 
-    const southLight = new THREE.PointLight(0xf59e0b, 3.2, 90);
-    southLight.position.set(0, 9, 20);
+    const southLight = new THREE.PointLight(0xf59e0b, 2.5, 40);
+    southLight.position.set(0, 5.0, 10);
     scene.add(southLight);
 
-    const westLight = new THREE.PointLight(0x10b981, 3.2, 90);
-    westLight.position.set(-20, 9, 0);
-    scene.add(westLight);
+    // 3. HIGH-TECH ROUND COUNCIL CHAMBER WALLS & ARCHITECTURE
+    const roomRadius = 14.5;
+    const roomHeight = 6.8;
 
-    const eastLight = new THREE.PointLight(0xeab308, 3.2, 90);
-    eastLight.position.set(20, 9, 0);
-    scene.add(eastLight);
-
-    // 3. UNIFIED FACILITY FOUNDATION (Outer Boundary)
-    const foundationGeo = new THREE.BoxGeometry(80, 0.4, 80);
-    const foundationMat = new THREE.MeshPhongMaterial({
-      color: 0x050d1a,
-      shininess: 95,
+    // Chamber Circular Floor
+    const floorGeo = new THREE.CircleGeometry(roomRadius, 48);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x040812,
+      roughness: 0.15,
+      metalness: 0.85,
     });
-    const foundationMesh = new THREE.Mesh(foundationGeo, foundationMat);
-    foundationMesh.position.set(0, 0.1, 0);
+    const foundationMesh = new THREE.Mesh(floorGeo, floorMat);
+    foundationMesh.rotation.x = -Math.PI / 2;
+    foundationMesh.position.y = 0.1;
     foundationMesh.receiveShadow = true;
     scene.add(foundationMesh);
 
-    // Neon Floor Grid
-    const gridHelper = new THREE.GridHelper(78, 39, 0x0284c7, 0x0a1f38);
-    gridHelper.position.y = 0.32;
-    scene.add(gridHelper);
-
-    // 4. ARCHITECTURAL FACILITY ROOMS & WALLS (EXACTLY MATCHING BLUEPRINTS)
-    OAKHAVEN_SECTORS.forEach((sec) => {
-      const isDome = sec.shape === "circle";
-      const roomGroup = new THREE.Group();
-      roomGroup.position.set(sec.x, 0, sec.z);
-
-      const h = sec.type === "corridor" ? 2.2 : 3.5;
-      let geom: THREE.BufferGeometry;
-
-      if (isDome) {
-        geom = new THREE.CylinderGeometry(sec.radius || 6, sec.radius || 6, h, 36);
-      } else if (sec.shape === "pentagon") {
-        geom = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, h, 5);
-      } else if (sec.shape === "octagon") {
-        geom = new THREE.CylinderGeometry(sec.width / 2, sec.width / 2, h, 8);
-      } else {
-        geom = new THREE.BoxGeometry(sec.width, h, sec.depth);
-      }
-
-      // Translucent Hologram Walls
-      const wallMat = new THREE.MeshPhongMaterial({
-        color: new THREE.Color(sec.wallColor),
-        transparent: true,
-        opacity: 0.18,
-        shininess: 95,
-        side: THREE.DoubleSide,
-      });
-      const wallMesh = new THREE.Mesh(geom, wallMat);
-      wallMesh.position.y = h / 2;
-      roomGroup.add(wallMesh);
-
-      // Neon Frame Wireframe Edges
-      const edgeGeo = new THREE.EdgesGeometry(geom);
-      const edgeMat = new THREE.LineBasicMaterial({
-        color: new THREE.Color(sec.wallColor),
-        linewidth: 1.5,
-      });
-      const edgeLine = new THREE.LineSegments(edgeGeo, edgeMat);
-      edgeLine.position.y = h / 2;
-      roomGroup.add(edgeLine);
-
-      // Room Floor Plate
-      let floorGeo: THREE.BufferGeometry;
-      if (isDome) {
-        floorGeo = new THREE.CircleGeometry((sec.radius || 6) - 0.1, 36);
-      } else {
-        floorGeo = new THREE.PlaneGeometry(sec.width - 0.15, sec.depth - 0.15);
-      }
-      const floorMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(sec.floorColor),
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-      floorMesh.rotation.x = Math.PI / 2;
-      floorMesh.position.y = 0.33;
-      roomGroup.add(floorMesh);
-
-      scene.add(roomGroup);
-
-      // Doorway Portals & Red Blast Gates
-      sec.doors.forEach((door) => {
-        const isRedGate = door.isLocked;
-        const archGeo = new THREE.BoxGeometry(isRedGate ? 2.6 : 1.8, 2.4, 0.45);
-        const archMat = new THREE.MeshStandardMaterial({
-          color: isRedGate ? 0xef4444 : 0x00f0ff,
-          emissive: isRedGate ? 0xef4444 : 0x00f0ff,
-          emissiveIntensity: isRedGate ? 1.0 : 0.4,
-          roughness: 0.2,
-        });
-        const archMesh = new THREE.Mesh(archGeo, archMat);
-        archMesh.position.set(door.x, 1.2, door.z);
-        scene.add(archMesh);
-      });
+    // Curved Chamber Perimeter Wall
+    const wallGeo = new THREE.CylinderGeometry(roomRadius, roomRadius, roomHeight, 40, 1, true);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x07111e,
+      roughness: 0.35,
+      metalness: 0.7,
+      side: THREE.BackSide,
     });
+    const chamberWall = new THREE.Mesh(wallGeo, wallMat);
+    chamberWall.position.y = roomHeight / 2;
+    scene.add(chamberWall);
 
-    // Central Square Wall framing the Ring (From Image 2 Blueprint)
-    const centerFrameGeo = new THREE.BoxGeometry(26, 3.2, 26);
-    const centerFrameEdges = new THREE.EdgesGeometry(centerFrameGeo);
-    const centerFrameLine = new THREE.LineSegments(
-      centerFrameEdges,
-      new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 2 })
-    );
-    centerFrameLine.position.set(0, 1.6, 0);
-    scene.add(centerFrameLine);
+    // Glowing Neon Vertical Ribs on Chamber Wall
+    for (let r = 0; r < 12; r++) {
+      const ribAngle = (r / 12) * Math.PI * 2;
+      const rx = Math.cos(ribAngle) * (roomRadius - 0.1);
+      const rz = Math.sin(ribAngle) * (roomRadius - 0.1);
+      const ribGeo = new THREE.BoxGeometry(0.18, roomHeight, 0.25);
+      const ribMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+      const rib = new THREE.Mesh(ribGeo, ribMat);
+      rib.position.set(rx, roomHeight / 2, rz);
+      rib.rotation.y = -ribAngle + Math.PI / 2;
+      scene.add(rib);
+    }
+
+    // Ceiling Neon Ring
+    const ceilingRingGeo = new THREE.TorusGeometry(roomRadius - 0.2, 0.08, 8, 40);
+    const ceilingRingMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+    const ceilingRing = new THREE.Mesh(ceilingRingGeo, ceilingRingMat);
+    ceilingRing.rotation.x = Math.PI / 2;
+    ceilingRing.position.y = roomHeight;
+    scene.add(ceilingRing);
 
     // 5. DYNAMIC HIGH-TECH ROUND TABLE (Scales with player count)
     const playerList = Object.entries(gameState.players);
@@ -1333,149 +1273,64 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       {/* 1. 3D WebGL Canvas */}
       <div ref={mountRef} className="w-full h-full cursor-pointer touch-none" />
 
-      {/* 2. PERSISTENT MINIMAP (Top-Right) — EXACT BLUEPRINT REPLICA */}
+      {/* 2. COUNCIL CHAMBER RADAR (Top-Right) */}
       <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-1 pointer-events-none">
         <div
           className={`${
-            minimapExpanded ? "w-72 h-72 md:w-84 md:h-84" : "w-36 h-36 md:w-44 md:h-44"
-          } rounded-2xl bg-slate-950/95 border-2 border-cyan-500/60 backdrop-blur-md shadow-2xl p-2 relative overflow-hidden pointer-events-auto transition-all duration-300`}
+            minimapExpanded ? "w-60 h-60" : "w-32 h-32 md:w-36 md:h-36"
+          } rounded-2xl bg-slate-950/90 border-2 border-cyan-500/50 backdrop-blur-md shadow-2xl p-2 relative overflow-hidden pointer-events-auto transition-all duration-300`}
         >
-          {/* Minimap SVG Radar */}
-          <svg viewBox="-40 -40 80 80" className="w-full h-full">
-            {/* Outer Perimeter Grid */}
-            <rect x="-38" y="-38" width="76" height="76" fill="#030712" stroke="#1e293b" strokeWidth="0.8" />
+          {/* Chamber SVG Radar */}
+          <svg viewBox="-20 -20 40 40" className="w-full h-full">
+            {/* Outer Chamber Perimeter */}
+            <circle cx="0" cy="0" r="17" fill="#040812" stroke="#1e293b" strokeWidth="0.8" />
+            <circle cx="0" cy="0" r="14.5" fill="none" stroke="#0284c7" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
 
-            {/* Central Square Wall framing the Ring (From Image 2 Blueprint) */}
-            <rect x="-13" y="-13" width="26" height="26" fill="none" stroke="#0284c7" strokeWidth="1" strokeDasharray="2,2" />
+            {/* Central Round Table */}
+            <circle cx="0" cy="0" r="5" fill="#0b172a" stroke="#00f0ff" strokeWidth="0.9" />
+            <circle cx="0" cy="0" r="1.2" fill="#00f0ff" opacity="0.6" />
 
-            {/* Concentric Ring Corridor (Image 1 & 2) */}
-            <circle cx="0" cy="0" r="11" fill="none" stroke="#0ea5e9" strokeWidth="2.5" opacity="0.4" />
+            {/* Arcade Machine Location Blip */}
+            <rect x="9.5" y="-3.5" width="2.2" height="3.5" rx="0.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="0.4" />
 
-            {/* Central Lockdown Room (Dome) */}
-            <circle cx="0" cy="0" r="7" fill="#0284c7" stroke="#38bdf8" strokeWidth="1.2" opacity="0.75" />
-            <text x="0" y="1" fontSize="2.8" fill="#ffffff" textAnchor="middle" fontWeight="bold">
-              LOCKDOWN
-            </text>
+            {/* All Seated Operative Blips */}
+            {Object.entries(gameState.players).map(([pid, p], idx) => {
+              const isMe = pid === myId;
+              const angle = (idx / Math.max(3, Object.keys(gameState.players).length)) * Math.PI * 2;
+              const bx = Math.cos(angle) * 7.2;
+              const bz = Math.sin(angle) * 7.2;
 
-            {/* 4 Cardinal Vaults (V1, V2, V3, V4) */}
-            {/* V1 - West */}
-            <circle cx="-11" cy="0" r="3" fill="#1e1b4b" stroke="#f43f5e" strokeWidth="1" />
-            <text x="-11" y="1" fontSize="2.5" fill="#f43f5e" textAnchor="middle" fontWeight="bold">V1</text>
-            {/* Red Blast Door for V1 */}
-            <line x1="-14" y1="-2" x2="-14" y2="2" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" />
-
-            {/* V2 - North */}
-            <circle cx="0" cy="-11" r="3" fill="#1e1b4b" stroke="#f43f5e" strokeWidth="1" />
-            <text x="0" y="-10" fontSize="2.5" fill="#f43f5e" textAnchor="middle" fontWeight="bold">V2</text>
-            {/* Red Blast Door for V2 */}
-            <line x1="-2" y1="-14" x2="2" y2="-14" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" />
-
-            {/* V3 - East */}
-            <circle cx="11" cy="0" r="3" fill="#1e1b4b" stroke="#f43f5e" strokeWidth="1" />
-            <text x="11" y="1" fontSize="2.5" fill="#f43f5e" textAnchor="middle" fontWeight="bold">V3</text>
-            {/* Red Blast Door for V3 */}
-            <line x1="14" y1="-2" x2="14" y2="2" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" />
-
-            {/* V4 - South */}
-            <circle cx="0" cy="11" r="3" fill="#1e1b4b" stroke="#f43f5e" strokeWidth="1" />
-            <text x="0" y="12" fontSize="2.5" fill="#f43f5e" textAnchor="middle" fontWeight="bold">V4</text>
-            {/* Red Blast Door for V4 */}
-            <line x1="-2" y1="14" x2="2" y2="14" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" />
-
-            {/* Axial Corridors */}
-            <rect x="-2" y="-28" width="4" height="14" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            <rect x="-2" y="14" width="4" height="14" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            <rect x="-28" y="-2" width="14" height="4" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-            <rect x="14" y="-2" width="14" height="4" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.6" opacity="0.6" />
-
-            {/* Top Horizontal Corridor & Far Corridors */}
-            <rect x="-2" y="-29" width="34" height="3" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.5" opacity="0.5" />
-            <rect x="-35" y="-19" width="3" height="34" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.5" opacity="0.5" />
-            <rect x="32" y="-15" width="3" height="34" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.5" opacity="0.5" />
-
-            {/* Northwest Circular Room (Doctor's Bio Clinic) */}
-            <circle cx="-24" cy="-18" r="6" fill="#064e3b" stroke="#10b981" strokeWidth="1" opacity="0.8" />
-            <text x="-24" y="-17" fontSize="2.4" fill="#10b981" textAnchor="middle" fontWeight="bold">CLINIC</text>
-
-            {/* Southeast Circular Chamber (Gas Decon) */}
-            <circle cx="24" cy="18" r="6" fill="#713f12" stroke="#eab308" strokeWidth="1" opacity="0.8" />
-            <text x="24" y="19" fontSize="2.4" fill="#eab308" textAnchor="middle" fontWeight="bold">CHAMBER</text>
-
-            {/* Surrounding Research Rooms */}
-            <rect x="6" y="-26" width="10" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <polygon points="19,-26 25,-26 27,-21 25,-16 19,-16" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="16" y="-14" width="14" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="16" y="5" width="14" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="4" y="16" width="11" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <polygon points="-33,8 -27,4 -22,8 -24,15 -31,15" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-24" y="5" width="8" height="9" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-26" y="16" width="9" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-16" y="16" width="10" height="11" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-31" y="-12" width="12" height="8" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-16" y="-26" width="11" height="10" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-            <rect x="-26" y="-5" width="10" height="7" fill="#09121f" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" />
-
-            {/* Grey Doorway Entrances on walls */}
-            <rect x="-11" y="-2" width="1.2" height="1.8" fill="#94a3b8" />
-            <rect x="9.8" y="-2" width="1.2" height="1.8" fill="#94a3b8" />
-            <rect x="-1" y="-11" width="1.8" height="1.2" fill="#94a3b8" />
-            <rect x="-1" y="9.8" width="1.8" height="1.2" fill="#94a3b8" />
-            <rect x="-18" y="-18" width="1.2" height="1.8" fill="#94a3b8" />
-            <rect x="30" y="18" width="1.2" height="1.8" fill="#94a3b8" />
-
-            {/* Floating World Scrap Blips */}
-            {gameState.worldScraps?.map((s) => (
-              <circle key={s.id} cx={s.x} cy={s.z} r="1.1" fill="#facc15" className="animate-pulse" />
-            ))}
-
-            {/* Other Operatives Blips */}
-            {Object.entries(gameState.players).map(([pid, p]) => {
-              if (pid === myId) return null;
               return (
-                <circle
-                  key={pid}
-                  cx={p.x ?? 0}
-                  cy={p.z ?? 0}
-                  r="2.2"
-                  fill={p.color || "#e2e8f0"}
-                  stroke="#ffffff"
-                  strokeWidth="0.5"
-                />
+                <g key={pid}>
+                  <circle
+                    cx={bx}
+                    cy={bz}
+                    r={isMe ? 2.0 : 1.4}
+                    fill={p.color || "#0ea5e9"}
+                    stroke={isMe ? "#00f0ff" : "#ffffff"}
+                    strokeWidth={isMe ? 0.8 : 0.4}
+                  />
+                  {isMe && (
+                    <circle cx={bx} cy={bz} r="3.2" fill="none" stroke="#00f0ff" strokeWidth="0.5" opacity="0.6" className="animate-ping" />
+                  )}
+                </g>
               );
             })}
-
-            {/* Local Player Icon (Pulsing Triangle + Radar Cone) */}
-            <g
-              transform={`translate(${localPosRef.current.x}, ${localPosRef.current.z}) rotate(${
-                (localPosRef.current.rotation * 180) / Math.PI
-              })`}
-            >
-              <polygon points="0,0 -4,10 4,10" fill="url(#radarCone)" opacity="0.4" />
-              <polygon points="0,3 2.5,-3 -2.5,-3" fill="#00f0ff" stroke="#ffffff" strokeWidth="0.6" />
-              <circle cx="0" cy="0" r="3.8" fill="none" stroke="#00f0ff" strokeWidth="0.8" opacity="0.7" />
-            </g>
-
-            <defs>
-              <linearGradient id="radarCone" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.6" />
-                <stop offset="100%" stopColor="#00f0ff" stopOpacity="0" />
-              </linearGradient>
-            </defs>
           </svg>
 
-          {/* Minimap Expand/Collapse Button */}
+          {/* Radar Expand/Collapse Button */}
           <button
             onClick={() => setMinimapExpanded((o) => !o)}
             className="absolute bottom-1 right-1 p-1 rounded-lg bg-slate-900/90 text-cyan-400 hover:text-white border border-cyan-500/40"
           >
-            {minimapExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            {minimapExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
           </button>
         </div>
 
-        {/* Current Room / Sector Tag */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900/90 border border-cyan-500/40 text-[11px] font-mono text-cyan-300 backdrop-blur-md">
-          <MapPin className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-bold truncate max-w-[160px]">{currentSectorName}</span>
+        {/* Room Name Badge */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 backdrop-blur-md">
+          <MapPin className="w-3 h-3 text-amber-400" />
+          <span className="font-bold truncate max-w-[140px]">Council Chamber</span>
         </div>
       </div>
 

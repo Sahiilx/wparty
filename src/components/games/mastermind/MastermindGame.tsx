@@ -309,8 +309,8 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
       };
 
       return (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto pointer-events-auto">
-          <div className="relative flex flex-col items-center gap-6 px-6 py-8 max-w-3xl w-full bg-slate-900/90 border border-cyan-500/40 rounded-3xl shadow-2xl backdrop-blur-xl">
+        <div className="flex-1 flex flex-col items-center justify-center p-4 pointer-events-auto">
+          <div className="relative flex flex-col items-center gap-5 px-6 py-6 max-w-2xl w-full bg-slate-950/50 border border-cyan-500/40 rounded-3xl shadow-2xl backdrop-blur-sm">
             {/* Title */}
             <div className="flex flex-col items-center gap-1.5 text-center">
               <div
