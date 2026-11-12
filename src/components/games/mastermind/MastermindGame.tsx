@@ -24,6 +24,7 @@ import {
   Target,
   Shield,
   Check,
+  Wrench,
   AlertTriangle,
   HelpCircle,
   X,
@@ -154,6 +155,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
 
   // D. Shop & Procurement Drawer State
   const [shopDrawerOpen, setShopDrawerOpen] = useState<boolean>(false);
+  const [shopTab, setShopTab] = useState<"market" | "crafting">("market");
 
   // E. Phase transition announcement
   const [showPhaseAnnounce, setShowPhaseAnnounce] = useState(false);
@@ -489,7 +491,7 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
       );
     }
 
-    // 2. MINI-GAME OVERLAY (In-World Terminal Screen)
+    // 2. MINI-GAME OVERLAY (In-Table Terminal Screen)
     if (phase === "minigame") {
       const miniGame = g.currentMiniGame || "power_split";
       const handleComplete = (_coins: number, score: number) => {
@@ -497,72 +499,85 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
       };
 
       return (
-        <div className="flex-1 flex items-center justify-center p-3 sm:p-5 overflow-y-auto pointer-events-auto bg-slate-950/60 backdrop-blur-sm">
-          {miniGame === "power_split" && <PowerSplitMiniGame onComplete={handleComplete} />}
-          {miniGame === "cyber_cipher" && <CyberCipherMiniGame onComplete={handleComplete} />}
-          {miniGame === "leverage_pool" && <LeveragePoolMiniGame onComplete={handleComplete} />}
+        <div className="flex-1 flex flex-col justify-end p-3 sm:p-6 pointer-events-none">
+          {/* Centered In-Desk Console Terminal Frame */}
+          <div className="pointer-events-auto max-w-2xl w-full mx-auto bg-slate-950/90 border-2 border-cyan-400/60 rounded-3xl shadow-2xl backdrop-blur-xl p-4 flex flex-col gap-3 animate-fade-in mb-2">
+            <div className="flex items-center justify-between border-b border-cyan-500/30 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                <span className="text-xs font-mono font-black text-cyan-300 uppercase tracking-widest">
+                  IN-TABLE TERMINAL CONSOLE • ROUND {g.currentRound}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-amber-400 font-black">
+                {g.timer}s
+              </div>
+            </div>
+
+            {/* Minigame viewport */}
+            <div className="max-h-[60vh] overflow-y-auto">
+              {miniGame === "power_split" && <PowerSplitMiniGame onComplete={handleComplete} />}
+              {miniGame === "cyber_cipher" && <CyberCipherMiniGame onComplete={handleComplete} />}
+              {miniGame === "leverage_pool" && <LeveragePoolMiniGame onComplete={handleComplete} />}
+            </div>
+          </div>
         </div>
       );
     }
 
-    // 3. ROUND TABLE MEETING (Live 3D Council Deck & 3D Targeting Laser)
+    // 3. ROUND TABLE MEETING (Live 3D Council Deck & Right-Side Abilities HUD)
     if (phase === "round_table_meeting") {
       if (!myPlayer) return null;
       const abilities = ROLE_ABILITIES[myPlayer.role] || ROLE_ABILITIES.sheriff;
 
       return (
-        <div className="flex-1 flex flex-col justify-between p-3 sm:p-6 pointer-events-none">
-          {/* Top Council Banner */}
-          <div className="flex items-center justify-between pointer-events-auto bg-slate-950/85 border border-cyan-500/40 rounded-2xl px-4 py-2.5 backdrop-blur-md max-w-4xl w-full mx-auto shadow-2xl">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-              <div>
-                <span className="text-xs font-mono font-black text-cyan-300 uppercase tracking-wider block">
-                  Phase 2: 3D Council Chamber
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono hidden sm:block">
-                  Select a target operative below to aim your 3D targeting laser!
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-xs text-slate-400 font-mono">Deliberation:</span>
-              <span className="font-mono text-sm font-black text-amber-400">{g.timer}s</span>
+        <div className="flex-1 flex pointer-events-none relative p-3 sm:p-5">
+          {/* Top Council Mini Banner */}
+          <div className="pointer-events-auto absolute top-2 left-1/2 -translate-x-1/2 bg-slate-950/85 border border-cyan-500/40 rounded-2xl px-4 py-2 backdrop-blur-md shadow-2xl flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+            <span className="text-xs font-mono font-black text-cyan-300 uppercase tracking-wider">
+              Council Chamber • Deliberation
+            </span>
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-amber-400 font-black">
+              {g.timer}s
             </div>
           </div>
 
-          {/* Bottom Action & Ability Deck */}
-          <div className="pointer-events-auto w-full max-w-4xl mx-auto bg-slate-950/95 border border-cyan-500/50 rounded-3xl p-4 shadow-2xl backdrop-blur-xl flex flex-col gap-3">
+          {/* RIGHT-SIDE ABILITIES & TARGETING HUD */}
+          <div className="pointer-events-auto absolute right-3 sm:right-6 top-14 bottom-4 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] bg-slate-950/90 border border-cyan-500/50 rounded-3xl p-3.5 shadow-2xl backdrop-blur-xl flex flex-col justify-between overflow-y-auto z-20">
             {/* Header: Role & Passive */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">Your Clearance:</span>
+            <div className="flex flex-col gap-1.5 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Clearance</span>
                 <span className="text-sm font-black uppercase tracking-wider" style={{ color: ROLE_COLORS[myPlayer.role] }}>
                   {ROLE_ICONS[myPlayer.role]} {myPlayer.role}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-300 font-bold">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-300 font-bold">
                 <span>{abilities.passive.icon}</span>
-                <span>Passive: {abilities.passive.name}</span>
+                <span className="truncate">Passive: {abilities.passive.name}</span>
               </div>
             </div>
 
-            {/* 3 Active Abilities */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* 3 Active Abilities Stacked */}
+            <div className="flex flex-col gap-2 my-2">
+              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">
+                Select Ability:
+              </span>
               {/* Normal 1 */}
               <button
                 onClick={() => setSelectedAbility("normal1")}
                 disabled={isAbilityLockedIn}
-                className={`p-2.5 rounded-2xl border text-left transition ${
+                className={`p-2 rounded-2xl border text-left transition ${
                   selectedAbility === "normal1"
                     ? "bg-cyan-950/90 border-cyan-400 shadow-md shadow-cyan-950"
                     : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{abilities.normal1.icon}</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">{abilities.normal1.name}</div>
+                  <span className="text-lg">{abilities.normal1.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white truncate">{abilities.normal1.name}</div>
                     <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.normal1.desc}</span>
                   </div>
                 </div>
@@ -572,16 +587,16 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               <button
                 onClick={() => setSelectedAbility("normal2")}
                 disabled={isAbilityLockedIn}
-                className={`p-2.5 rounded-2xl border text-left transition ${
+                className={`p-2 rounded-2xl border text-left transition ${
                   selectedAbility === "normal2"
                     ? "bg-cyan-950/90 border-cyan-400 shadow-md shadow-cyan-950"
                     : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{abilities.normal2.icon}</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">{abilities.normal2.name}</div>
+                  <span className="text-lg">{abilities.normal2.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white truncate">{abilities.normal2.name}</div>
                     <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.normal2.desc}</span>
                   </div>
                 </div>
@@ -591,47 +606,44 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
               <button
                 onClick={() => setSelectedAbility("ultimate")}
                 disabled={isAbilityLockedIn}
-                className={`p-2.5 rounded-2xl border text-left transition ${
+                className={`p-2 rounded-2xl border text-left transition ${
                   selectedAbility === "ultimate"
                     ? "bg-purple-950/90 border-purple-400 shadow-md shadow-purple-950"
                     : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{abilities.ultimate.icon}</span>
-                  <div>
-                    <div className="text-xs font-bold text-purple-300">{abilities.ultimate.name}</div>
+                  <span className="text-lg">{abilities.ultimate.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-purple-300 truncate">{abilities.ultimate.name}</div>
                     <span className="text-[10px] text-slate-400 line-clamp-1">{abilities.ultimate.desc}</span>
                   </div>
                 </div>
               </button>
             </div>
 
-            {/* Operative Target Selector (with 3D Laser Targeting) */}
-            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800">
-              <span className="text-[11px] font-mono text-slate-400 font-bold">
-                🎯 Target Operative (Aim 3D Laser):
+            {/* Operative Target Selector */}
+            <div className="flex flex-col gap-1.5 border-t border-slate-800 pt-2">
+              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">
+                🎯 Target Operative (Aim Laser):
               </span>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
                 {allPlayers.map((p) => {
-                  const isMe = p.id === myId;
+                  if (p.id === myId) return null;
                   const isSelected = selectedTargetId === p.id;
-                  if (isMe) return null;
-
                   return (
                     <button
                       key={p.id}
                       onClick={() => setSelectedTargetId(p.id)}
                       disabled={isAbilityLockedIn || p.health === "dead"}
-                      className={`px-3 py-1.5 rounded-2xl border text-xs font-bold flex items-center gap-1.5 shrink-0 transition ${
+                      className={`p-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 truncate transition ${
                         isSelected
                           ? "bg-rose-950 border-rose-500 text-rose-200 shadow-md shadow-rose-900"
                           : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700"
                       }`}
                     >
                       <span>{p.avatar}</span>
-                      <span>{p.name}</span>
-                      <span className="text-[10px]">{HEALTH_ICONS[p.health]}</span>
+                      <span className="truncate">{p.name}</span>
                     </button>
                   );
                 })}
@@ -639,17 +651,16 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
             </div>
 
             {/* Confirm Ability Button */}
-            <div className="flex items-center justify-between pt-1">
-              <div className="text-xs font-mono text-cyan-300">
+            <div className="border-t border-slate-800 pt-2.5 flex flex-col gap-1.5">
+              <div className="text-[10px] font-mono text-cyan-300 truncate">
                 {selectedTargetId
                   ? `Laser Locked on: ${allPlayers.find((p) => p.id === selectedTargetId)?.name}`
-                  : "Select an operative to aim"}
+                  : "Aim laser at an operative"}
               </div>
-
               <button
                 onClick={handleConfirmAbility}
                 disabled={isAbilityLockedIn}
-                className={`px-6 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-xl flex items-center gap-2 transition ${
+                className={`w-full py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-xl flex items-center justify-center gap-2 transition ${
                   isAbilityLockedIn
                     ? "bg-emerald-950 border border-emerald-500 text-emerald-300 cursor-not-allowed"
                     : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 border border-white"
@@ -664,20 +675,20 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
       );
     }
 
-    // 4. SHOP AND CRAFTING OVERLAY (Free Roam + Scrap Looting + Drawer trigger)
+    // 4. SHOP AND CRAFTING OVERLAY (Arcade Machine + In-Table Tablet)
     if (phase === "shop_and_craft" || phase === "shop") {
       return (
         <div className="flex-1 flex flex-col justify-between p-3 pointer-events-none">
           {/* Top Info Banner */}
-          <div className="flex items-center justify-between pointer-events-auto bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-2 backdrop-blur-md max-w-lg shadow-xl">
+          <div className="flex items-center justify-between pointer-events-auto bg-slate-950/85 border border-slate-800 rounded-2xl px-4 py-2 backdrop-blur-md max-w-lg shadow-xl">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
               <div>
                 <span className="text-xs font-mono font-black text-emerald-300 uppercase tracking-wider block">
-                  Phase 3: Roam, Loot Scraps & Trade
+                  Phase 3: Shop & Crafting Lab
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  Walk to Craft Bench in 3D or click button below
+                  Tap Arcade Machine in 3D for Shop, or Table Tablet for Crafting
                 </span>
               </div>
             </div>
@@ -686,14 +697,27 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
             </div>
           </div>
 
-          {/* Quick Shop Action Pill */}
-          <div className="pointer-events-auto flex items-center justify-center mb-1">
+          {/* Quick Action Buttons */}
+          <div className="pointer-events-auto flex items-center justify-center gap-3 mb-2 flex-wrap">
             <button
-              onClick={() => setShopDrawerOpen(true)}
-              className="px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-2xl shadow-amber-500/40 border border-white flex items-center gap-2 active:scale-95 transition"
+              onClick={() => {
+                setShopTab("market");
+                setShopDrawerOpen(true);
+              }}
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-2xl shadow-amber-500/40 border border-white flex items-center gap-2 active:scale-95 transition"
             >
               <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
-              <span>Open Black Market & Crafting Bench [B]</span>
+              <span>🕹️ Arcade Black Market</span>
+            </button>
+            <button
+              onClick={() => {
+                setShopTab("crafting");
+                setShopDrawerOpen(true);
+              }}
+              className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-2xl shadow-purple-500/40 border border-purple-300 flex items-center gap-2 active:scale-95 transition"
+            >
+              <Wrench className="w-4 h-4 stroke-[2.5]" />
+              <span>📱 In-Table Crafting Tablet</span>
             </button>
           </div>
         </div>
@@ -733,11 +757,23 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           onSelectSkin={onSelectSkin}
           onUseAbility={onUseAbility}
           onInteract={(type) => {
-            if (type === "craft" || type === "terminal") {
+            if (type === "arcade") {
+              setShopTab("market");
+              setShopDrawerOpen(true);
+            } else if (type === "tablet" || type === "craft" || type === "terminal") {
+              setShopTab("crafting");
               setShopDrawerOpen(true);
             }
           }}
-          onOpenShop={() => setShopDrawerOpen(true)}
+          onOpenShop={() => {
+            setShopTab("market");
+            setShopDrawerOpen(true);
+          }}
+          onOpenCrafting={() => {
+            setShopTab("crafting");
+            setShopDrawerOpen(true);
+          }}
+          onSelectTargetPlayer={(pId) => setSelectedTargetId(pId)}
           hideDefaultHud={phase === "round_table_meeting" || shopDrawerOpen}
         />
       </div>
@@ -909,10 +945,28 @@ export const MastermindGame: React.FC<MastermindGameProps> = ({
           <div className="w-full max-w-4xl h-full bg-slate-900 border-l border-cyan-500/40 p-4 flex flex-col shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
               <div className="flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-amber-400" />
-                <span className="text-sm font-black uppercase tracking-wider text-cyan-300">
-                  Facility Black Market & Crafting Lab
-                </span>
+                <button
+                  onClick={() => setShopTab("market")}
+                  className={`px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition ${
+                    shopTab === "market"
+                      ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30"
+                      : "bg-slate-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>🕹️ Arcade Black Market</span>
+                </button>
+                <button
+                  onClick={() => setShopTab("crafting")}
+                  className={`px-3 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition ${
+                    shopTab === "crafting"
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
+                      : "bg-slate-800 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Wrench className="w-4 h-4" />
+                  <span>📱 In-Table Crafting Tablet</span>
+                </button>
               </div>
               <button
                 onClick={() => setShopDrawerOpen(false)}
