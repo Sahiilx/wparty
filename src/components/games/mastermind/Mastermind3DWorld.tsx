@@ -511,6 +511,506 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
     marketTerminalGroup.add(screenMesh);
     scene.add(marketTerminalGroup);
 
+    // =========================================================================
+    // 6b. PHASE-SPECIFIC 3D ENVIRONMENT PROPS
+    // =========================================================================
+    const phaseAnimated: Array<{ mesh: THREE.Object3D; anim: string; baseY?: number }> = [];
+    const playerCount = Object.keys(gameState.players).length || 4;
+
+    if (phase === "round_table_meeting") {
+      // === HOLOGRAPHIC MEETING SCREEN (north of round table) ===
+      const screenW = 9.5, screenH = 5.8;
+
+      const screenFrameGeo = new THREE.BoxGeometry(screenW + 0.5, screenH + 0.5, 0.35);
+      const screenFrameMat = new THREE.MeshStandardMaterial({ color: 0x0a1628, roughness: 0.3, metalness: 0.9 });
+      const screenFrame = new THREE.Mesh(screenFrameGeo, screenFrameMat);
+      screenFrame.position.set(0, 5.2, -8.2);
+      scene.add(screenFrame);
+
+      const screenPlaneGeo = new THREE.PlaneGeometry(screenW - 0.1, screenH - 0.1);
+      const screenPlaneMat = new THREE.MeshBasicMaterial({ color: 0x001a3a, side: THREE.DoubleSide });
+      const screenPlane = new THREE.Mesh(screenPlaneGeo, screenPlaneMat);
+      screenPlane.position.set(0, 5.2, -8.0);
+      scene.add(screenPlane);
+
+      // Neon glowing frame edges
+      const glowFrameGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(screenW, screenH, 0.05));
+      const glowFrameMat = new THREE.LineBasicMaterial({ color: 0x00f0ff });
+      const glowFrame = new THREE.LineSegments(glowFrameGeo, glowFrameMat);
+      glowFrame.position.set(0, 5.2, -7.95);
+      scene.add(glowFrame);
+
+      // Animated scan line across screen
+      const scanGeo = new THREE.PlaneGeometry(screenW - 0.3, 0.14);
+      const scanMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+      const scanLine = new THREE.Mesh(scanGeo, scanMat);
+      scanLine.position.set(0, 5.2, -7.95);
+      scene.add(scanLine);
+      phaseAnimated.push({ mesh: scanLine, anim: "scan", baseY: 5.2 });
+
+      // Holographic projector column rising from table center
+      const projColGeo = new THREE.CylinderGeometry(0.05, 0.35, 4.0, 12, 1, true);
+      const projColMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide });
+      const projCol = new THREE.Mesh(projColGeo, projColMat);
+      projCol.position.set(0, 3.2, -1.5);
+      scene.add(projCol);
+      phaseAnimated.push({ mesh: projCol, anim: "pulse_opacity" });
+
+      // Tablets on table surface at each chair
+      chairPositions.forEach((cp) => {
+        const angleToCenter = Math.atan2(0 - cp.z, 0 - cp.x);
+        const tX = cp.x * 0.5 + Math.cos(angleToCenter) * 1.6;
+        const tZ = cp.z * 0.5 + Math.sin(angleToCenter) * 1.6;
+
+        const tabletGeo = new THREE.BoxGeometry(0.52, 0.055, 0.37);
+        const tabletMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.9 });
+        const tablet = new THREE.Mesh(tabletGeo, tabletMat);
+        tablet.position.set(tX, 1.22, tZ);
+        tablet.rotation.y = cp.rotation;
+
+        const tabScreenGeo = new THREE.PlaneGeometry(0.44, 0.3);
+        const tabScreenMat = new THREE.MeshBasicMaterial({ color: 0x0284c7, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+        const tabScreen = new THREE.Mesh(tabScreenGeo, tabScreenMat);
+        tabScreen.rotation.x = -Math.PI / 2;
+        tabScreen.position.set(0, 0.03, 0);
+        tablet.add(tabScreen);
+        phaseAnimated.push({ mesh: tabScreen, anim: "screen_flicker" });
+
+        const tabEdgeGeo = new THREE.EdgesGeometry(tabletGeo);
+        const tabEdgeMat = new THREE.LineBasicMaterial({ color: 0x38bdf8 });
+        const tabEdge = new THREE.LineSegments(tabEdgeGeo, tabEdgeMat);
+        tablet.add(tabEdge);
+        scene.add(tablet);
+      });
+
+      // Atmospheric meeting lights
+      const meetingLight1 = new THREE.PointLight(0x7c3aed, 5.0, 60);
+      meetingLight1.position.set(0, 7, -6);
+      scene.add(meetingLight1);
+      const meetingLight2 = new THREE.PointLight(0x00f0ff, 3.5, 40);
+      meetingLight2.position.set(0, 5, -7.5);
+      scene.add(meetingLight2);
+
+    } else if (phase === "minigame") {
+      // === ARCADE TERMINAL PODS (players stand at each one) ===
+      const termCount = Math.max(3, Math.min(playerCount, 6));
+      const termRadius = 10;
+
+      for (let i = 0; i < termCount; i++) {
+        const angle = (i / termCount) * Math.PI * 2;
+        const tx = Math.cos(angle) * termRadius;
+        const tz = Math.sin(angle) * termRadius;
+
+        const podGroup = new THREE.Group();
+        podGroup.position.set(tx, 0, tz);
+        podGroup.rotation.y = angle + Math.PI; // face center
+
+        // Pod desk base
+        const deskGeo = new THREE.BoxGeometry(1.65, 0.95, 0.9);
+        const deskMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+        const desk = new THREE.Mesh(deskGeo, deskMat);
+        desk.position.y = 0.47;
+        podGroup.add(desk);
+
+        // Monitor screen (angled up toward player)
+        const monitorGeo = new THREE.BoxGeometry(1.35, 0.9, 0.1);
+        const monitorMat = new THREE.MeshStandardMaterial({ color: 0x0a1628, roughness: 0.1, metalness: 0.9 });
+        const monitor = new THREE.Mesh(monitorGeo, monitorMat);
+        monitor.position.set(0, 1.44, -0.2);
+        monitor.rotation.x = -0.3;
+        podGroup.add(monitor);
+
+        // Glowing display surface
+        const dispGeo = new THREE.PlaneGeometry(1.2, 0.76);
+        const dispMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+        const disp = new THREE.Mesh(dispGeo, dispMat);
+        disp.position.set(0, 1.44, -0.15);
+        disp.rotation.x = -0.3;
+        podGroup.add(disp);
+        phaseAnimated.push({ mesh: disp, anim: "screen_flicker" });
+
+        // Keyboard/control panel
+        const keyGeo = new THREE.BoxGeometry(1.2, 0.07, 0.6);
+        const keyMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5 });
+        const keyPanel = new THREE.Mesh(keyGeo, keyMat);
+        keyPanel.position.set(0, 0.96, 0.2);
+        podGroup.add(keyPanel);
+
+        // Neon pod edge
+        const podEdgeGeo = new THREE.EdgesGeometry(deskGeo);
+        const podEdgeMat = new THREE.LineBasicMaterial({ color: 0x00f0ff });
+        const podEdge = new THREE.LineSegments(podEdgeGeo, podEdgeMat);
+        podEdge.position.y = 0.47;
+        podGroup.add(podEdge);
+
+        // Per-pod glow
+        const podLight = new THREE.PointLight(0x00f0ff, 1.8, 10);
+        podLight.position.set(0, 2, -0.5);
+        podGroup.add(podLight);
+
+        scene.add(podGroup);
+      }
+
+      // Big overhead display screen (north wall)
+      const bigFrameGeo = new THREE.BoxGeometry(14, 7, 0.4);
+      const bigFrameMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3 });
+      const bigFrame = new THREE.Mesh(bigFrameGeo, bigFrameMat);
+      bigFrame.position.set(0, 6, -21);
+      scene.add(bigFrame);
+
+      const bigScreenGeo = new THREE.PlaneGeometry(13.5, 6.5);
+      const bigScreenMat = new THREE.MeshBasicMaterial({ color: 0x000d1a, side: THREE.DoubleSide });
+      const bigScreen = new THREE.Mesh(bigScreenGeo, bigScreenMat);
+      bigScreen.position.set(0, 6, -20.78);
+      scene.add(bigScreen);
+
+      const bigEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(14, 7, 0.1));
+      const bigEdgeMat = new THREE.LineBasicMaterial({ color: 0xef4444 });
+      const bigEdge = new THREE.LineSegments(bigEdgeGeo, bigEdgeMat);
+      bigEdge.position.set(0, 6, -20.78);
+      scene.add(bigEdge);
+
+      // Overhead arcade lighting
+      const arcLight1 = new THREE.PointLight(0xef4444, 3.5, 70);
+      arcLight1.position.set(0, 7, -15);
+      scene.add(arcLight1);
+      const arcLight2 = new THREE.PointLight(0x00f0ff, 2.5, 55);
+      arcLight2.position.set(0, 7, 0);
+      scene.add(arcLight2);
+
+    } else if (phase === "shop_and_craft" || phase === "shop") {
+      // === PHYSICAL ARCADE SHOP ENVIRONMENT ===
+
+      // 5 Arcade cabinets (west-north wall)
+      const arcadeColors = [0x00f0ff, 0xf59e0b, 0xa855f7, 0x10b981, 0xef4444];
+      for (let i = 0; i < 5; i++) {
+        const arcadeGroup = new THREE.Group();
+        arcadeGroup.position.set(-19 + i * 5.8, 0, -19);
+
+        // Cabinet body
+        const cabGeo = new THREE.BoxGeometry(1.75, 2.7, 1.1);
+        const cabMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.3, metalness: 0.3 });
+        const cab = new THREE.Mesh(cabGeo, cabMat);
+        cab.position.y = 1.35;
+        arcadeGroup.add(cab);
+
+        // Marquee top (lit header)
+        const marqueeGeo = new THREE.BoxGeometry(1.8, 0.55, 1.15);
+        const marqueeMat = new THREE.MeshStandardMaterial({
+          color: arcadeColors[i], roughness: 0.3,
+          emissive: new THREE.Color(arcadeColors[i]), emissiveIntensity: 0.4
+        });
+        const marquee = new THREE.Mesh(marqueeGeo, marqueeMat);
+        marquee.position.y = 2.98;
+        arcadeGroup.add(marquee);
+        phaseAnimated.push({ mesh: marquee, anim: "pulse_emissive_col" });
+
+        // Screen display
+        const aScrnGeo = new THREE.PlaneGeometry(1.25, 0.9);
+        const aScrnMat = new THREE.MeshBasicMaterial({ color: arcadeColors[i], side: THREE.DoubleSide });
+        const aScrn = new THREE.Mesh(aScrnGeo, aScrnMat);
+        aScrn.position.set(0, 1.65, 0.57);
+        arcadeGroup.add(aScrn);
+        phaseAnimated.push({ mesh: aScrn, anim: "screen_flicker" });
+
+        // Control panel
+        const panelGeo = new THREE.BoxGeometry(1.55, 0.3, 0.65);
+        const panelMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5 });
+        const panel = new THREE.Mesh(panelGeo, panelMat);
+        panel.position.set(0, 0.95, 0.4);
+        panel.rotation.x = -0.5;
+        arcadeGroup.add(panel);
+
+        // Neon edge outline
+        const cabEdgeGeo = new THREE.EdgesGeometry(cabGeo);
+        const cabEdgeMat = new THREE.LineBasicMaterial({ color: arcadeColors[i] });
+        const cabEdge = new THREE.LineSegments(cabEdgeGeo, cabEdgeMat);
+        cabEdge.position.y = 1.35;
+        arcadeGroup.add(cabEdge);
+
+        // Per-cabinet glow
+        const arcLight = new THREE.PointLight(arcadeColors[i], 2.0, 10);
+        arcLight.position.set(0, 2.5, 1);
+        arcadeGroup.add(arcLight);
+
+        scene.add(arcadeGroup);
+      }
+
+      // Shop counter / bar (east side)
+      const counterGrp = new THREE.Group();
+      counterGrp.position.set(16, 0, -8);
+
+      const counterGeo = new THREE.BoxGeometry(10, 1.1, 2.0);
+      const counterMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.5 });
+      const counter = new THREE.Mesh(counterGeo, counterMat);
+      counter.position.y = 0.55;
+      counterGrp.add(counter);
+
+      const counterTopGeo = new THREE.BoxGeometry(10.1, 0.08, 2.1);
+      const counterTopMat = new THREE.MeshStandardMaterial({ color: 0x0e2a3f, roughness: 0.1, metalness: 0.95 });
+      const counterTop = new THREE.Mesh(counterTopGeo, counterTopMat);
+      counterTop.position.y = 1.14;
+      counterGrp.add(counterTop);
+
+      const cEdgeGeo = new THREE.EdgesGeometry(counterGeo);
+      const cEdgeMat = new THREE.LineBasicMaterial({ color: 0xf59e0b });
+      const cEdge = new THREE.LineSegments(cEdgeGeo, cEdgeMat);
+      cEdge.position.y = 0.55;
+      counterGrp.add(cEdge);
+
+      // Shopkeeper screen behind counter
+      const keeperScrnGeo = new THREE.PlaneGeometry(3.8, 2.6);
+      const keeperScrnMat = new THREE.MeshBasicMaterial({ color: 0x002211, side: THREE.DoubleSide });
+      const keeperScrn = new THREE.Mesh(keeperScrnGeo, keeperScrnMat);
+      keeperScrn.position.set(0, 2.6, -1.3);
+      counterGrp.add(keeperScrn);
+      phaseAnimated.push({ mesh: keeperScrn, anim: "screen_flicker" });
+
+      const keeperEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(3.8, 2.6, 0.05));
+      const keeperEdgeMat = new THREE.LineBasicMaterial({ color: 0x10b981 });
+      const keeperEdge = new THREE.LineSegments(keeperEdgeGeo, keeperEdgeMat);
+      keeperEdge.position.set(0, 2.6, -1.3);
+      counterGrp.add(keeperEdge);
+      scene.add(counterGrp);
+
+      // Item display pedestals with floating glowing orbs
+      const pedData: Array<{ pos: [number, number]; color: number }> = [
+        { pos: [10, -13], color: 0x00f0ff },
+        { pos: [15, -13], color: 0xf59e0b },
+        { pos: [20, -13], color: 0xa855f7 },
+      ];
+      pedData.forEach(({ pos, color }) => {
+        const [px, pz] = pos;
+        const pedGeo = new THREE.CylinderGeometry(0.5, 0.65, 1.1, 12);
+        const pedMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.3 });
+        const ped = new THREE.Mesh(pedGeo, pedMat);
+        ped.position.set(px, 0.55, pz);
+        const pEdgeGeo = new THREE.EdgesGeometry(pedGeo);
+        const pEdgeMat = new THREE.LineBasicMaterial({ color });
+        ped.add(new THREE.LineSegments(pEdgeGeo, pEdgeMat));
+        scene.add(ped);
+
+        // Floating solid orb
+        const orbGeo = new THREE.SphereGeometry(0.36, 16, 16);
+        const orbMat = new THREE.MeshStandardMaterial({ color, emissive: new THREE.Color(color), emissiveIntensity: 0.5, roughness: 0.1 });
+        const orb = new THREE.Mesh(orbGeo, orbMat);
+        orb.position.set(px, 1.85, pz);
+        scene.add(orb);
+        phaseAnimated.push({ mesh: orb, anim: "float_spin", baseY: 1.85 });
+
+        // Wireframe outer shell
+        const orbWireGeo = new THREE.SphereGeometry(0.46, 10, 10);
+        const orbWireMat = new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.5 });
+        const orbWire = new THREE.Mesh(orbWireGeo, orbWireMat);
+        orbWire.position.set(px, 1.85, pz);
+        scene.add(orbWire);
+        phaseAnimated.push({ mesh: orbWire, anim: "float_spin_inv", baseY: 1.85 });
+
+        const orbLight = new THREE.PointLight(color, 2.5, 8);
+        orbLight.position.set(px, 2.1, pz);
+        scene.add(orbLight);
+      });
+
+      // Large crafting station (center-south)
+      const craftStGrp = new THREE.Group();
+      craftStGrp.position.set(-6, 0, 10);
+
+      const cStGeo = new THREE.BoxGeometry(5.2, 1.25, 2.9);
+      const cStMat = new THREE.MeshStandardMaterial({ color: 0x1a0a2e, roughness: 0.3, metalness: 0.4 });
+      const cSt = new THREE.Mesh(cStGeo, cStMat);
+      cSt.position.y = 0.625;
+      craftStGrp.add(cSt);
+
+      const cStEdge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(cStGeo),
+        new THREE.LineBasicMaterial({ color: 0xa855f7 })
+      );
+      cStEdge.position.y = 0.625;
+      craftStGrp.add(cStEdge);
+
+      // Holographic blueprint floating above
+      const bpGeo = new THREE.PlaneGeometry(4.2, 2.6);
+      const bpMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+      const bp = new THREE.Mesh(bpGeo, bpMat);
+      bp.position.set(0, 2.7, 0);
+      bp.rotation.x = -0.3;
+      craftStGrp.add(bp);
+      phaseAnimated.push({ mesh: bp, anim: "float_tilt", baseY: 2.7 });
+
+      // Floating wrench
+      const wrenchGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.85, 8);
+      const wrenchMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.4, metalness: 0.8 });
+      const wrench = new THREE.Mesh(wrenchGeo, wrenchMat);
+      wrench.position.set(-0.9, 1.95, 0);
+      wrench.rotation.z = 0.5;
+      craftStGrp.add(wrench);
+      phaseAnimated.push({ mesh: wrench, anim: "float_slow", baseY: 1.95 });
+
+      // Spinning gear
+      const gearGeo = new THREE.TorusGeometry(0.32, 0.075, 6, 12);
+      const gearMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.7 });
+      const gear = new THREE.Mesh(gearGeo, gearMat);
+      gear.position.set(0.9, 1.95, 0);
+      craftStGrp.add(gear);
+      phaseAnimated.push({ mesh: gear, anim: "spin_gear" });
+
+      const craftGlow = new THREE.PointLight(0xa855f7, 4.0, 18);
+      craftGlow.position.set(0, 3.5, 0);
+      craftStGrp.add(craftGlow);
+      scene.add(craftStGrp);
+
+      // Shop ambient lighting
+      const shopAmber = new THREE.PointLight(0xf59e0b, 3.5, 70);
+      shopAmber.position.set(16, 7, -8);
+      scene.add(shopAmber);
+      const shopNeon = new THREE.PointLight(0x00f0ff, 2.0, 55);
+      shopNeon.position.set(-10, 6, -16);
+      scene.add(shopNeon);
+
+    } else if (phase === "news_gazette" || phase === "morning_news") {
+      // === NEWS PROJECTION THEATER ===
+
+      // Massive projection screen (north wall)
+      const wsGeo = new THREE.PlaneGeometry(23, 11.5);
+      const wsMat = new THREE.MeshBasicMaterial({ color: 0x000d1a, side: THREE.DoubleSide });
+      const wallScreen = new THREE.Mesh(wsGeo, wsMat);
+      wallScreen.position.set(0, 7.8, -25);
+      scene.add(wallScreen);
+
+      const wsEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(23, 11.5, 0.1));
+      const wsEdgeMat = new THREE.LineBasicMaterial({ color: 0xf43f5e });
+      const wsEdge = new THREE.LineSegments(wsEdgeGeo, wsEdgeMat);
+      wsEdge.position.set(0, 7.8, -25);
+      scene.add(wsEdge);
+
+      // Screen scanlines
+      const newsScangeo = new THREE.PlaneGeometry(22.5, 0.15);
+      const newsScanMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+      const newsScan = new THREE.Mesh(newsScangeo, newsScanMat);
+      newsScan.position.set(0, 7.8, -24.95);
+      scene.add(newsScan);
+      phaseAnimated.push({ mesh: newsScan, anim: "scan", baseY: 7.8 });
+
+      // Projector box (ceiling)
+      const projBoxGeo = new THREE.BoxGeometry(0.75, 0.38, 1.1);
+      const projBoxMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5 });
+      const projBox = new THREE.Mesh(projBoxGeo, projBoxMat);
+      projBox.position.set(0, 11.5, -6);
+      scene.add(projBox);
+
+      // Projector lens glow
+      const lensGeo = new THREE.SphereGeometry(0.15, 8, 8);
+      const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const lens = new THREE.Mesh(lensGeo, lensMat);
+      lens.position.set(0, 11.5, -6.65);
+      scene.add(lens);
+
+      // Light beam (cone from projector to screen)
+      const beamGeo = new THREE.ConeGeometry(2.0, 20, 16, 1, true);
+      const beamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.025, side: THREE.DoubleSide });
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(0, 7.8, -15.5);
+      beam.rotation.x = Math.PI / 2;
+      scene.add(beam);
+      phaseAnimated.push({ mesh: beam, anim: "pulse_opacity" });
+
+      // Theater-style row seating (characters face north/screen)
+      const seatRows = [
+        { z: -4, count: 4 },
+        { z: 2,  count: 4 },
+        { z: 8,  count: 3 },
+      ];
+      seatRows.forEach(({ z, count }) => {
+        for (let s = 0; s < count; s++) {
+          const sx = (s - (count - 1) / 2) * 2.5;
+          const seatGeo = new THREE.BoxGeometry(0.95, 0.5, 0.9);
+          const seatMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.5 });
+          const seat = new THREE.Mesh(seatGeo, seatMat);
+          seat.position.set(sx, 0.25, z);
+          scene.add(seat);
+
+          const backGeo = new THREE.BoxGeometry(0.9, 0.75, 0.12);
+          const backMesh = new THREE.Mesh(backGeo, seatMat);
+          backMesh.position.set(sx, 0.68, z - 0.45);
+          scene.add(backMesh);
+
+          seat.add(new THREE.LineSegments(
+            new THREE.EdgesGeometry(seatGeo),
+            new THREE.LineBasicMaterial({ color: 0x1e3a5f })
+          ));
+        }
+      });
+
+      // Red glow from screen
+      const newsGlow = new THREE.PointLight(0xf43f5e, 5.0, 65);
+      newsGlow.position.set(0, 7.5, -20);
+      scene.add(newsGlow);
+      const newsAmbient = new THREE.PointLight(0x200010, 2.0, 80);
+      newsAmbient.position.set(0, 5, 0);
+      scene.add(newsAmbient);
+
+    } else if (phase === "role_reveal") {
+      // === DRAMATIC ROLE REVEAL ENVIRONMENT ===
+
+      // 4 spotlight cones from ceiling
+      for (let i = 0; i < 4; i++) {
+        const spotAngle = (i / 4) * Math.PI * 2;
+        const spotX = Math.cos(spotAngle) * 5.5;
+        const spotZ = Math.sin(spotAngle) * 5.5;
+
+        const spotBeamGeo = new THREE.ConeGeometry(1.6, 9.5, 16, 1, true);
+        const spotBeamMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.05, side: THREE.DoubleSide });
+        const spotBeam = new THREE.Mesh(spotBeamGeo, spotBeamMat);
+        spotBeam.position.set(spotX, 6.5, spotZ);
+        scene.add(spotBeam);
+        phaseAnimated.push({ mesh: spotBeam, anim: "pulse_opacity" });
+
+        const spotLight = new THREE.SpotLight(0x00f0ff, 4.5, 16, Math.PI / 8, 0.3);
+        spotLight.position.set(spotX, 9.5, spotZ);
+        spotLight.target.position.set(spotX * 0.3, 0, spotZ * 0.3);
+        scene.add(spotLight);
+        scene.add(spotLight.target);
+      }
+
+      // 3D Floating card meshes fanned out in air
+      const numCards = Math.max(3, Math.min(playerCount, 8));
+      for (let i = 0; i < numCards; i++) {
+        const frac = numCards > 1 ? i / (numCards - 1) : 0.5;
+        const angle = (frac - 0.5) * Math.PI * 0.65;
+
+        const cardGeo = new THREE.BoxGeometry(0.68, 0.98, 0.048);
+        const cardMat = new THREE.MeshStandardMaterial({
+          color: 0x070f1e, roughness: 0.1, metalness: 0.95,
+          emissive: 0x00f0ff, emissiveIntensity: 0.1,
+        });
+        const card = new THREE.Mesh(cardGeo, cardMat);
+        const arcR = 2.9;
+        card.position.set(Math.sin(angle) * arcR, 2.6 + Math.cos(Math.abs(angle)) * 0.4, -1.5 + Math.cos(angle) * 0.6);
+        card.rotation.y = -angle;
+        card.rotation.z = angle * 0.08;
+
+        card.add(new THREE.LineSegments(new THREE.EdgesGeometry(cardGeo), new THREE.LineBasicMaterial({ color: 0x00f0ff })));
+
+        // Glowing question mark surface
+        const symGeo = new THREE.PlaneGeometry(0.32, 0.48);
+        const symMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+        const sym = new THREE.Mesh(symGeo, symMat);
+        sym.position.z = 0.025;
+        card.add(sym);
+
+        scene.add(card);
+        phaseAnimated.push({ mesh: card, anim: "card_float", baseY: card.position.y });
+      }
+
+      // Dramatic center reveal lights
+      const revealLight1 = new THREE.PointLight(0x00f0ff, 6.5, 22);
+      revealLight1.position.set(0, 4.5, -1);
+      scene.add(revealLight1);
+      const revealLight2 = new THREE.PointLight(0xf59e0b, 3.0, 30);
+      revealLight2.position.set(0, 2, 2);
+      scene.add(revealLight2);
+    }
+
     // 7. INTERACTIVE WORLD SCRAP CUBES (3D Floating Resource Loot)
     const scrapMeshes: Record<string, THREE.Group> = {};
     const scraps = gameState.worldScraps || [];
@@ -798,6 +1298,21 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
           pz = seat.z;
           rot = seat.rotation;
         }
+      } else if (phase === "minigame") {
+        // Position players at their terminal pods
+        const tCount = Math.max(3, Math.min(playerList.length, 6));
+        const tAngle = (idx / tCount) * Math.PI * 2;
+        const tR = 10;
+        px = Math.cos(tAngle) * tR;
+        pz = Math.sin(tAngle) * tR;
+        rot = Math.atan2(-Math.cos(tAngle), -Math.sin(tAngle)); // face center/terminal
+      } else if (phase === "news_gazette" || phase === "morning_news") {
+        // Theater row seating, face north (-Z = toward screen)
+        const col = idx % 4;
+        const row = Math.floor(idx / 4);
+        px = (col - 1.5) * 2.5;
+        pz = row * 6 - 4;
+        rot = Math.PI; // face screen (north / -Z)
       }
 
       model.group.position.set(px, isMeeting ? 0.35 : 0, pz);
@@ -928,6 +1443,64 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
       crystalMesh.rotation.x = Math.sin(elapsedTime * 1.5) * 0.2;
       craftHolo.rotation.z += 1.2 * dt;
 
+      // Animate phase-specific 3D environment props
+      phaseAnimated.forEach(({ mesh, anim, baseY }) => {
+        const bY = baseY ?? mesh.position.y;
+        switch (anim) {
+          case "float_spin":
+            mesh.position.y = bY + Math.sin(elapsedTime * 2.2) * 0.18;
+            mesh.rotation.y += 0.9 * dt;
+            break;
+          case "float_spin_inv":
+            mesh.position.y = bY + Math.sin(elapsedTime * 2.2) * 0.18;
+            mesh.rotation.y -= 0.55 * dt;
+            break;
+          case "float_slow":
+            mesh.position.y = bY + Math.sin(elapsedTime * 1.8 + 0.5) * 0.12;
+            break;
+          case "float_tilt":
+            mesh.position.y = bY + Math.sin(elapsedTime * 1.5) * 0.1;
+            mesh.rotation.z = Math.sin(elapsedTime * 0.8) * 0.08;
+            break;
+          case "spin_gear":
+            mesh.rotation.z += 2.2 * dt;
+            break;
+          case "card_float":
+            mesh.position.y = bY + Math.sin(elapsedTime * 1.9 + mesh.position.x * 0.5) * 0.13;
+            mesh.rotation.z = Math.sin(elapsedTime * 0.9 + bY) * 0.06;
+            break;
+          case "scan": {
+            // Scan line sweeps up and down within screen area
+            const sweep = Math.sin(elapsedTime * 1.1) * 2.4;
+            mesh.position.y = bY + sweep;
+            break;
+          }
+          case "pulse_opacity": {
+            const mat = (mesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
+            if (mat && mat.transparent) {
+              mat.opacity = 0.02 + Math.abs(Math.sin(elapsedTime * 1.3)) * 0.06;
+            }
+            break;
+          }
+          case "screen_flicker": {
+            const mat = (mesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
+            if (mat) {
+              const flick = Math.random() > 0.985 ? 0.25 : 1.0;
+              mat.opacity = flick;
+              mat.transparent = flick < 1;
+            }
+            break;
+          }
+          case "pulse_emissive_col": {
+            const mat = (mesh as THREE.Mesh).material as THREE.MeshStandardMaterial;
+            if (mat && mat.emissiveIntensity !== undefined) {
+              mat.emissiveIntensity = 0.2 + Math.abs(Math.sin(elapsedTime * 2.0)) * 0.35;
+            }
+            break;
+          }
+        }
+      });
+
       // Animate floating scrap cubes
       scraps.forEach((s) => {
         const m = scrapMeshes[s.id];
@@ -1015,15 +1588,27 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
 
       // --- CAMERA POSITIONING BASED ON GAME PHASE ---
       if (phase === "round_table_meeting") {
-        // Orbit close to council round table
-        const targetCamX = Math.sin(elapsedTime * 0.1) * 3.0;
-        const targetCamZ = 9.5;
-        camera.position.x += (targetCamX - camera.position.x) * 0.05;
-        camera.position.y += (6.8 - camera.position.y) * 0.05;
-        camera.position.z += (targetCamZ - camera.position.z) * 0.05;
-        camera.lookAt(0, 1.1, 0);
+        // Cinematic orbit around council table
+        const targetCamX = Math.sin(elapsedTime * 0.12) * 4.0;
+        const targetCamZ = 10.5;
+        camera.position.x += (targetCamX - camera.position.x) * 0.045;
+        camera.position.y += (7.5 - camera.position.y) * 0.045;
+        camera.position.z += (targetCamZ - camera.position.z) * 0.045;
+        camera.lookAt(0, 1.4, -1);
+      } else if (phase === "minigame") {
+        // Top-down view of terminal circle
+        camera.position.x += (localPosRef.current.x * 0.25 - camera.position.x) * 0.05;
+        camera.position.y += (17 - camera.position.y) * 0.05;
+        camera.position.z += (10 - camera.position.z) * 0.05;
+        camera.lookAt(0, 0, -6);
+      } else if (phase === "news_gazette" || phase === "morning_news") {
+        // Behind the theater audience, facing the big screen
+        camera.position.x += (Math.sin(elapsedTime * 0.08) * 3 - camera.position.x) * 0.04;
+        camera.position.y += (8.5 - camera.position.y) * 0.04;
+        camera.position.z += (12 - camera.position.z) * 0.04;
+        camera.lookAt(0, 7.8, -25);
       } else if (phase === "role_reveal") {
-        // Framing the central chamber
+        // Framing the floating cards
         camera.position.x += (0 - camera.position.x) * 0.05;
         camera.position.y += (8.5 - camera.position.y) * 0.05;
         camera.position.z += (11.5 - camera.position.z) * 0.05;
@@ -1133,6 +1718,21 @@ export const Mastermind3DWorld: React.FC<Mastermind3DWorldProps> = ({
             model.group.position.set(seat.x, 0.35, seat.z);
             model.group.rotation.y = seat.rotation;
           }
+        } else if (phase === "minigame") {
+          const tCount = Math.max(3, Math.min(playerList.length, 6));
+          const tAngle = (idx / tCount) * Math.PI * 2;
+          const tR = 10;
+          model.group.position.x += (Math.cos(tAngle) * tR - model.group.position.x) * 0.08;
+          model.group.position.z += (Math.sin(tAngle) * tR - model.group.position.z) * 0.08;
+          model.group.rotation.y = Math.atan2(-Math.cos(tAngle), -Math.sin(tAngle));
+        } else if (phase === "news_gazette" || phase === "morning_news") {
+          const col = idx % 4;
+          const row = Math.floor(idx / 4);
+          const tX = (col - 1.5) * 2.5;
+          const tZ = row * 6 - 4;
+          model.group.position.x += (tX - model.group.position.x) * 0.08;
+          model.group.position.z += (tZ - model.group.position.z) * 0.08;
+          model.group.rotation.y = Math.PI;
         } else if (p.x !== undefined && p.z !== undefined) {
           model.group.position.x += (p.x - model.group.position.x) * 0.15;
           model.group.position.z += (p.z - model.group.position.z) * 0.15;
